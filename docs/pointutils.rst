@@ -4,15 +4,16 @@ pointutils package
 Submodules
 ----------
 
-pointutils\.learning module
----------------------------------
+pointutils\.props module
+----------------------------------
 
-.. automodule:: pointutils.raster
+.. automodule:: pointutils.props
     :members:
     :undoc-members:
     :show-inheritance:
 
-pointutils\.props module
+
+pointutils\.learning module
 ----------------------------------
 
 .. automodule:: pointutils.learning

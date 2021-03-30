@@ -25,6 +25,7 @@ dependencies:
   - keras-gpu
   - pytorch-gpu
   - tpot
+  - glob2
   - tqdm
 
   - pip:

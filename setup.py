@@ -15,12 +15,12 @@ with open('README.rst', encoding='utf-8') as f:
     long_description = f.read()
 
 
-descript = ('Utilities fro classifying pointclouds using machine learning')
+descript = ('Utilities for classifying pointclouds using machine learning')
 
 
 
 setup(
-    name="pycmac",
+    name="pointutils",
     version="0.1",
     packages=find_packages(),
     include_package_data=True,# {
@@ -39,8 +39,8 @@ setup(
     description=descript,
     long_description=long_description,
     license='GPLv3+',
-    url="https://github.com/Ciaran1981/Sfm/pycmac",   # project home page, if any
-    download_url="https://github.com/Ciaran1981/Sfm/pycmac"
+    url="https://github.com/Ciaran1981/pointutils",   # project home page, if any
+    download_url="https://github.com/Ciaran1981/pointutils"
     # could also include long_description, download_url, classifiers, etc.
 )
 

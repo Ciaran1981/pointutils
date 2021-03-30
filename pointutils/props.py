@@ -16,20 +16,13 @@ from CGAL.CGAL_Point_set_3 import Point_set_3
 from CGAL.CGAL_Classification import *
 from tqdm import tqdm
 from pyntcloud import PyntCloud
+import numpy as np
+from glob2 import glob
+import os
+from joblib import Parallel, delayed
+   
 
-# The following is very ugly - replace it.
-def _get_featnames(features):
-    """
-    get the feature names
-    """
-    numoffeat = features.size()
-    featcols = []
-    
-    for idx in range(min(numoffeat, features.size())):
-        featcols.append(features.get(idx).name())
-    return featcols
-
-def cgal_features(incld, outcld=None, k=5, rgb=True):
+def cgal_features(incld, outcld=None, k=5, rgb=True, parallel=True):
     
     """ 
     Calculate CGAL-based point cloud features and write to file.
@@ -58,7 +51,9 @@ def cgal_features(incld, outcld=None, k=5, rgb=True):
     features = Feature_set()
     generator = Point_set_feature_generator(points, k)
     
-    features.begin_parallel_additions()
+    if parallel is True:
+        features.begin_parallel_additions()
+        
     generator.generate_point_based_features(features)
     if points.has_normal_map():
         generator.generate_normal_based_features(features, points.normal_map())
@@ -69,12 +64,12 @@ def cgal_features(incld, outcld=None, k=5, rgb=True):
                                                     points.int_map("red"),
                                                     points.int_map("green"),
                                                     points.int_map("blue"))
-    features.end_parallel_additions()
+    if parallel is True:
+        features.end_parallel_additions()
     
     print("Features calculated")
        
     names = _get_featnames(features)
-    
     
     if rgb is True:
         
@@ -109,7 +104,37 @@ def cgal_features(incld, outcld=None, k=5, rgb=True):
     if outcld == None:
         outcld = incld
     points.write(outcld)
+
+
+def cgal_features_tile(folder, k=5, rgb=True,  nt=None):
     
+    """ 
+    Calculate CGAL-based point cloud features for a folder containing ply files
+    Feature attributes will be written to the input ply files
+       
+    Parameters 
+    ----------- 
+    
+    folder: string
+              the input folder containing .ply tiles
+        
+    k: int
+            he no of scales at which to calculate features
+
+    rgb: bool
+            whether to include RGB-based features
+
+    """ 
+    
+    plylist = glob(os.path.join(folder, '*.ply'))
+    plylist.sort()
+    
+    if nt == None:
+        nt = len(plylist)
+        
+    Parallel(n_jobs=nt, verbose=2)(delayed(cgal_features)(p,  k=k, rgb=rgb, 
+             parallel=False) for p in plylist)
+
     
 def std_features(incld, outcld=None, k=[50,100,200],
                  props=['anisotropy', "curvature", "eigenentropy", "eigen_sum",
@@ -168,6 +193,38 @@ def std_features(incld, outcld=None, k=[50,100,200],
         pcd.to_file(incld)
     else:
         pcd.to_file(outcld)
+        
+def _get_featnames(features):
+    """
+    get the feature names
+    """
+    numoffeat = features.size()
+    featcols = []
+    
+    for idx in range(min(numoffeat, features.size())):
+        featcols.append(features.get(idx).name())
+    return featcols
+
+def _feat_row(features, names, idx):
+    
+    """
+    get the row of values
+    """   
+    cnt = np.arange(features.size()).tolist()
+    
+    oot = [features.get(c).value(idx) for c in cnt]
+
+# This doesn't result in an aggregate speed up as the entries must still 
+# be written to disk, but is here a a reference nontheless
+def _featgen(points):
+    """
+    write the features to list
+    """
+    
+    ar = np.arange(points.size()).tolist()
+    
+    feat_out = [_feat_row(features, names, i) for i in tqdm(ar)] 
+
 
 def _label_transfer(incld, labelcloud, field='training'):
     

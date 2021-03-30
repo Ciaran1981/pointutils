@@ -47,6 +47,7 @@ from keras.wrappers.scikit_learn import KerasClassifier
 #import tensorflow as tf
 #from keras.utils import multi_gpu_model
 import os
+from glob2 import glob
 gdal.UseExceptions()
 ogr.UseExceptions()
 
@@ -846,11 +847,11 @@ def get_training_ply(incld, label_field="training", classif_field='label',
     pcd = PyntCloud.from_file(incld)
     
     dF = pcd.points
-    
-    ignore.append(classif_field)
-#    ignore = ['x', 'y', 'scalar_ScanAngleRank', 
-#       'scalar_NumberOfReturns', 'scalar_ReturnNumber', 'scalar_GpsTime',
-#       'scalar_PointSourceId', classif_field]
+
+    # Must be done sperately otherwise py appends to list outside of function
+    if classif_field != None:
+        del dF[classif_field]
+
     
     # If any of the above list exists, cut them from the dF
 
@@ -893,6 +894,69 @@ def get_training_ply(incld, label_field="training", classif_field='label',
         jb.dump(X_train, outFile, compress=2)
     
     return X_train, fnames
+
+def get_training_tiles(folder, label_field="training", classif_field='label',
+                     rgb=True, outFile=None,  
+                     ignore=['x', 'y', 'scalar_ScanAngleRank', 'scalar_NumberOfReturns',
+                         'scalar_ReturnNumber', 'scalar_GpsTime','scalar_PointSourceId']):
+    
+    """ 
+    Get training from a point cloud
+    
+    
+    Parameters 
+    ----------- 
+    
+    folder: string
+              the input folder containing .ply files
+    
+    label_field: string
+              the name of the field representing the training points which must
+              be positive integers
+              
+    classif_field: string
+              the name of the field that will be used for classification later
+              must be specified so it can be ignored
+    rgb: bool
+              whether there is rgb data to be included             
+                
+    outFile: string
+               path to training array to be saved as .gz via joblib
+    
+    ignore: list
+           the pointcloud attributes to ignore for training
+    Returns
+    -------
+    
+    np array of training where first column is labels
+    
+    list of feature names for later ref/plotting
+
+    """  
+    # Just loop the above func
+    # TODO a suitable parallel option
+    
+    plylist = glob(os.path.join(folder, '*.ply'))
+    plylist.sort()
+    
+    trainlist = []
+    
+    for f in plylist:
+    
+        train, fnames = get_training_ply(f, label_field=label_field, 
+                                           classif_field=classif_field,
+                                           rgb=rgb, outFile=None,
+                                           ignore=ignore)
+        trainlist.append(train)
+        del train
+    
+    X_train = np.vstack(trainlist)
+    
+    if outFile != None:
+        jb.dump(X_train, outFile, compress=2)
+    
+    return X_train, fnames
+    
     
 
 def classify_ply(incld, inModel, train_field="training", class_field='label',
@@ -937,12 +1001,10 @@ def classify_ply(incld, inModel, train_field="training", class_field='label',
     # bloody classes
     del pcd
     
-    ignore.append(train_field)
-    ignore.append(class_field)
-#    ignore = ['x', 'y', 'scalar_ScanAngleRank',
-#       'scalar_NumberOfReturns', 'scalar_ReturnNumber', 'scalar_GpsTime',
-#       'scalar_PointSourceId', class_field, train_field]
-    
+    # Must be done sperately otherwise py appends to list outside of function
+    del dF[class_field]
+    del dF[train_field]
+
     # If any of the above list exists, cut them from the dF
     cols = dF.columns.to_list()
 
@@ -952,8 +1014,6 @@ def classify_ply(incld, inModel, train_field="training", class_field='label',
             del dF[i]
 
     del cols
-#    pProps =['anisotropy', 'curvature', "eigenentropy", "eigen_sum",
-#             "linearity", "omnivariance", "planarity", "sphericity"]
     
     # python bug this var persists/pointer or somehting
     del ignore        
@@ -986,7 +1046,45 @@ def classify_ply(incld, inModel, train_field="training", class_field='label',
         pcd.to_file(outcld)
 
 
-
+def classify_ply_tile(folder, inModel, train_field="training", class_field='label',
+                 rgb=True, outcld=None,
+                 ignore=['x', 'y', 'scalar_ScanAngleRank', 'scalar_NumberOfReturns',
+                         'scalar_ReturnNumber', 'scalar_GpsTime','scalar_PointSourceId']):
+    """ 
+    Classify a point cloud (ply format)
+    
+    
+    Parameters 
+    ----------- 
+    
+    folder: string
+              the input folder containing .ply files
+                
+    class_field: string
+               the name of the field that the results will be written to
+               this must already exist! Create in CldComp. or cgal
+    train_field: string
+              the name of the training label field so it can be ignored
+    
+    rgb: bool
+        whether there is rgb data to be included
+                 
+    outcld: string
+               path to a new ply to write if not writing to the input one
+   
+    ignore: list
+           the pointcloud attributes to ignore for classification
+    """ 
+            
+            
+    plylist = glob(os.path.join(folder, '*.ply'))
+    plylist.sort()
+    
+    for f in plylist:
+        classify_ply(f, inModel, train_field=train_field,
+                     class_field=class_field,
+                     rgb=rgb, outcld=None,
+                     ignore=ignore)
     
 def rmse_vector_lyr(inShape, attributes):
 

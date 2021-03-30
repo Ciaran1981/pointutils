@@ -190,13 +190,29 @@
 <p>Point cloud properties and manipulation in python</p>
 <dl class="py function">
 <dt id="pointutils.props.cgal_features">
-<code class="sig-prename descclassname"><span class="pre">pointutils.props.</span></code><code class="sig-name descname"><span class="pre">cgal_features</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.cgal_features" title="Permalink to this definition">¶</a></dt>
+<code class="sig-prename descclassname"><span class="pre">pointutils.props.</span></code><code class="sig-name descname"><span class="pre">cgal_features</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parallel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.cgal_features" title="Permalink to this definition">¶</a></dt>
 <dd><p>Calculate CGAL-based point cloud features and write to file.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>incld</strong> (<em>string</em>) – the input point cloud</p></li>
 <li><p><strong>outcld</strong> (<em>string</em>) – the output point cloud if None then write to incld</p></li>
+<li><p><strong>k</strong> (<em>int</em>) – he no of scales at which to calculate features</p></li>
+<li><p><strong>rgb</strong> (<em>bool</em>) – whether to include RGB-based features</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="pointutils.props.cgal_features_tile">
+<code class="sig-prename descclassname"><span class="pre">pointutils.props.</span></code><code class="sig-name descname"><span class="pre">cgal_features_tile</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">folder</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.cgal_features_tile" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculate CGAL-based point cloud features for a folder containing ply files
+Feature attributes will be written to the input ply files</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>folder</strong> (<em>string</em>) – the input folder containing .ply tiles</p></li>
 <li><p><strong>k</strong> (<em>int</em>) – he no of scales at which to calculate features</p></li>
 <li><p><strong>rgb</strong> (<em>bool</em>) – whether to include RGB-based features</p></li>
 </ul>
@@ -266,6 +282,25 @@ potentially slower than the other cross val in the create_model function</p>
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>incld</strong> (<em>string</em>) – the input point cloud</p></li>
+<li><p><strong>class_field</strong> (<em>string</em>) – the name of the field that the results will be written to
+this must already exist! Create in CldComp. or cgal</p></li>
+<li><p><strong>train_field</strong> (<em>string</em>) – the name of the training label field so it can be ignored</p></li>
+<li><p><strong>rgb</strong> (<em>bool</em>) – whether there is rgb data to be included</p></li>
+<li><p><strong>outcld</strong> (<em>string</em>) – path to a new ply to write if not writing to the input one</p></li>
+<li><p><strong>ignore</strong> (<em>list</em>) – the pointcloud attributes to ignore for classification</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="pointutils.learning.classify_ply_tile">
+<code class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></code><code class="sig-name descname"><span class="pre">classify_ply_tile</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">folder</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">train_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'training'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">class_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'label'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['x',</span> <span class="pre">'y',</span> <span class="pre">'scalar_ScanAngleRank',</span> <span class="pre">'scalar_NumberOfReturns',</span> <span class="pre">'scalar_ReturnNumber',</span> <span class="pre">'scalar_GpsTime',</span> <span class="pre">'scalar_PointSourceId']</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.classify_ply_tile" title="Permalink to this definition">¶</a></dt>
+<dd><p>Classify a point cloud (ply format)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>folder</strong> (<em>string</em>) – the input folder containing .ply files</p></li>
 <li><p><strong>class_field</strong> (<em>string</em>) – the name of the field that the results will be written to
 this must already exist! Create in CldComp. or cgal</p></li>
 <li><p><strong>train_field</strong> (<em>string</em>) – the name of the training label field so it can be ignored</p></li>
@@ -348,6 +383,33 @@ from which to run the pipeline</p></li>
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>incld</strong> (<em>string</em>) – the input point cloud</p></li>
+<li><p><strong>label_field</strong> (<em>string</em>) – the name of the field representing the training points which must
+be positive integers</p></li>
+<li><p><strong>classif_field</strong> (<em>string</em>) – the name of the field that will be used for classification later
+must be specified so it can be ignored</p></li>
+<li><p><strong>rgb</strong> (<em>bool</em>) – whether there is rgb data to be included</p></li>
+<li><p><strong>outFile</strong> (<em>string</em>) – path to training array to be saved as .gz via joblib</p></li>
+<li><p><strong>ignore</strong> (<em>list</em>) – the pointcloud attributes to ignore for training</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><em>np array of training where first column is labels</em></p></li>
+<li><p><em>list of feature names for later ref/plotting</em></p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="pointutils.learning.get_training_tiles">
+<code class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></code><code class="sig-name descname"><span class="pre">get_training_tiles</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">folder</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'training'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">classif_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'label'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outFile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['x',</span> <span class="pre">'y',</span> <span class="pre">'scalar_ScanAngleRank',</span> <span class="pre">'scalar_NumberOfReturns',</span> <span class="pre">'scalar_ReturnNumber',</span> <span class="pre">'scalar_GpsTime',</span> <span class="pre">'scalar_PointSourceId']</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.get_training_tiles" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get training from a point cloud</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>folder</strong> (<em>string</em>) – the input folder containing .ply files</p></li>
 <li><p><strong>label_field</strong> (<em>string</em>) – the name of the field representing the training points which must
 be positive integers</p></li>
 <li><p><strong>classif_field</strong> (<em>string</em>) – the name of the field that will be used for classification later

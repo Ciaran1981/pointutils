@@ -353,7 +353,7 @@ man_pages = [
 #  dir menu entry, description, category)
 texinfo_documents = [
     (master_doc, 'pointutils', 'pointutils Documentation',
-     author, 'pointutils', 'One line description of project.',
+     author, 'pointutils', 'Point cloud features and classification.',
      'Miscellaneous'),
 ]
 

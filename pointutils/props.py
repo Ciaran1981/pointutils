@@ -20,12 +20,14 @@ import numpy as np
 from glob2 import glob
 import os
 from joblib import Parallel, delayed
-   
+import pandas as pd
 
 def cgal_features(incld, outcld=None, k=5, rgb=True, parallel=True):
     
     """ 
     Calculate CGAL-based point cloud features and write to file.
+    
+    Files will be hefty! 
        
     Parameters 
     ----------- 
@@ -40,6 +42,12 @@ def cgal_features(incld, outcld=None, k=5, rgb=True, parallel=True):
 
     rgb: bool
             whether to include RGB-based features
+            
+    parallel: bool
+            if true, process multi thread
+    
+    tofile: bool
+            whether to write the attributes to file or return in memory
 
     """ 
 
@@ -103,14 +111,18 @@ def cgal_features(incld, outcld=None, k=5, rgb=True, parallel=True):
     
     if outcld == None:
         outcld = incld
+
     points.write(outcld)
+        
 
 
 def cgal_features_tile(folder, k=5, rgb=True,  nt=None):
     
     """ 
     Calculate CGAL-based point cloud features for a folder containing ply files
-    Feature attributes will be written to the input ply files
+    Feature attributes will be written to the input ply files.
+    
+    Files will be hefty!
        
     Parameters 
     ----------- 
@@ -123,6 +135,9 @@ def cgal_features_tile(folder, k=5, rgb=True,  nt=None):
 
     rgb: bool
             whether to include RGB-based features
+    
+    nt: int
+            number of threads to use in processing
 
     """ 
     
@@ -135,11 +150,90 @@ def cgal_features_tile(folder, k=5, rgb=True,  nt=None):
     Parallel(n_jobs=nt, verbose=2)(delayed(cgal_features)(p,  k=k, rgb=rgb, 
              parallel=False) for p in plylist)
 
+
+
+def cgal_features_mem(incld,  k=5, rgb=True, parallel=True):
     
+    """ 
+    Calculate CGAL-based point cloud features and return as a pandas df. 
+    Saves on disk space but many of these will take longer.
+       
+    Parameters 
+    ----------- 
+    
+    incld: string
+              the input point cloud
+        
+    k: int
+            he no of scales at which to calculate features
+
+    rgb: bool
+            whether to include RGB-based features
+            
+    parallel: bool
+            if true, process multi thread
+    
+    tofile: bool
+            whether to write the attributes to file or return in memory
+
+    """ 
+
+    print("Reading pointcloud")
+    points = Point_set_3(incld)
+ 
+    print("Computing features")
+    
+    features = Feature_set()
+    generator = Point_set_feature_generator(points, k)
+    
+    if parallel is True:
+        features.begin_parallel_additions()
+        
+    generator.generate_point_based_features(features)
+    if points.has_normal_map():
+        generator.generate_normal_based_features(features, points.normal_map())
+    
+    if rgb is True:
+        if points.has_int_map("red") and points.has_int_map("green") and points.has_int_map("blue"):
+            generator.generate_color_based_features(features,
+                                                    points.int_map("red"),
+                                                    points.int_map("green"),
+                                                    points.int_map("blue"))
+    if parallel is True:
+        features.end_parallel_additions()
+    
+    print("Features calculated")
+       
+    names = _get_featnames(features)
+    
+    # could return this or the feat names....
+    featarray = np.zeros(shape=(points.size(),len(names))) 
+    
+    # for ref in case ressurrected
+    #df = pd.DataFrame(columns=[names])
+    # if we are pulling from a shared mem object can we do in para
+    # oh yeah cant pickle a swig object.....then inserting a list into a df is
+    # much slower
+    #cnt = np.arange(0, points.size())
+    #bigList = Parallel(n_jobs=nt, verbose=2)(
+    #delayed(_cgalfeat)(cnt, features, n, idx) for idx, n in enumerate(names))
+
+    # ~ 8 minutes for 6.4 million points
+    for ftr, r in enumerate(tqdm(names)):
+        # loops in loops, this is not ideal - 
+        # TODO need c++ func to output np array
+        featarray[:,ftr] = [features.get(ftr).value(i) for i,
+                 p in enumerate(points.indices())]
+    
+    df = pd.DataFrame(data=featarray, columns=[names])
+    
+    return df
+
+
 def std_features(incld, outcld=None, k=[50,100,200],
                  props=['anisotropy', "curvature", "eigenentropy", "eigen_sum",
                          "linearity","omnivariance", "planarity", "sphericity"],
-                        nrm_props=None):
+                        nrm_props=None, tofile=True):
     
     """ 
     Calculate point cloud features and write to file, over a range of k-scales
@@ -164,6 +258,9 @@ def std_features(incld, outcld=None, k=[50,100,200],
     nrm_props: list
             properties based on normals if the exist (this will fail if they don't)
             e.g. ["inclination_radians",  "orientation_radians"]
+    
+    tofile: bool
+            if true write to pointcloud if false return a df of the features
 
     """  
     
@@ -187,12 +284,30 @@ def std_features(incld, outcld=None, k=[50,100,200],
     if nrm_props != None:
         [pcd.add_scalar_field(n) for n in nrm_props]
         
+
+    if tofile !=True:
+        # create strings with k added in brackets
+        # TODO replace with something more elegant
+        df = pcd.points
+        eigens = ['e1', 'e2', 'e3'] +pProps
+        keep = []
+        for i in k:
+            # pyntcloud seems to add ('1') to scales 
+            strn = "("+str(i+1)+")"
+            keep.append([e+strn for e in eigens])
+        keep = keep[0] + keep[1]  
         
-    
-    if outcld == None:
-        pcd.to_file(incld)
+        # use the set function to get the cols we wish to remove
+        colsorig = list(df.columns)
+        dumped = list(set(colsorig) - set(keep))
+        
+        return df.drop(columns=dumped)
     else:
-        pcd.to_file(outcld)
+
+        if outcld == None:
+            pcd.to_file(incld)
+        else:
+            pcd.to_file(outcld)
         
 def _get_featnames(features):
     """
@@ -241,6 +356,13 @@ def _label_transfer(incld, labelcloud, field='training'):
     
     pcd.to_file(incld)
     
+
+# not used...
+def _cgalfeat(cnt, features, name, ftr):
+    
+    flist = [features.get(ftr).value(i) for i in cnt]
+    
+    return flist  #np.asarray(flist)
     
     
     

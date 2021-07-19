@@ -19,7 +19,7 @@ except ImportError:
     print('xgb not available')
 
 from tqdm import tqdm
-
+from collections import OrderedDict
 import matplotlib.pyplot as plt
 from sklearn import preprocessing
 from sklearn import svm
@@ -38,21 +38,22 @@ from tpot import TPOTClassifier, TPOTRegressor
 from pyntcloud import PyntCloud
 
 from keras.models import Sequential
-
-#from keras.models import load_model, save_model
 # if still not working try:
 from keras.layers.core import Dense#, Dropout, Flatten, Activation
 
 from keras.wrappers.scikit_learn import KerasClassifier
+from keras.models import load_model, save_model
 #import tensorflow as tf
 #from keras.utils import multi_gpu_model
 import os
 from glob2 import glob
+
+from pointutils.props import cgal_features_mem, std_features
 gdal.UseExceptions()
 ogr.UseExceptions()
 
-def create_model_tpot(X_train, outModel, cv=6, cores=-1,
-                      regress=False, params = None, scoring=None):
+def create_model_tpot(X_train, outModel, gen=5, popsize=50,  cv=5, cores=-1, dask=False,
+                      regress=False, params=None, scoring=None, verbosity=2):
     
     """
     Create a model using the tpot library where genetic algorithms
@@ -82,6 +83,17 @@ def create_model_tpot(X_train, outModel, cv=6, cores=-1,
     
     params: a dict of model params (see tpot)
              enter your own params dict rather than the range provided
+             e.g. 
+             {'sklearn.ensemble.RandomForestClassifier': {"n_estimators": [200],
+                             "max_features": ['sqrt', 'log2'],                                                
+                             "max_depth": [10, None],
+    },
+
+    'xgboost.sklearn.XGBClassifier': {
+        'n_estimators': [200],
+                            'learning_rate': [0.1, 0.2, 0.4]
+    }}
+             
     
     scoring: string
               a suitable sklearn scoring type (see notes)
@@ -101,6 +113,19 @@ def create_model_tpot(X_train, outModel, cv=6, cores=-1,
     
     X_train = X_train[X_train[:,0] != 0]
     
+
+#   # params could be something like
+#    params = {'sklearn.ensemble.RandomForestClassifier': {"n_estimators": [200],
+#                             "max_features": ['sqrt', 'log2'],                                                
+#                             "max_depth": [10, None],
+#    },
+#
+#    'xgboost.sklearn.XGBClassifier': {
+#        'n_estimators': [200],
+#                            'learning_rate': [0.1, 0.2, 0.4]
+#    }}
+
+    
      
     # Remove non-finite values
     X_train = X_train[np.isfinite(X_train).all(axis=1)]
@@ -111,34 +136,52 @@ def create_model_tpot(X_train, outModel, cv=6, cores=-1,
     X_train = X_train[:,1:bands+1]
     
     if params is None and regress is False:       
-        tpot = TPOTClassifier(generations=5, population_size=50, verbosity=2,
-                              n_jobs=cores, scoring = scoring,
-                              warm_start=True)
+        tpot = TPOTClassifier(generations=gen, population_size=popsize, 
+                              verbosity=verbosity,
+                              n_jobs=cores, scoring=scoring, use_dask=dask,
+                              warm_start=True, memory='auto')
         tpot.fit(X_train, y_train)
         
     elif params != None and regress is False:
-        tpot = TPOTClassifier(config_dict=params, n_jobs=cores, scoring = scoring,
-                              warm_start=True)
+        tpot = TPOTClassifier(generations=gen, population_size=popsize,
+                              n_jobs=cores,  verbosity=verbosity,
+                              scoring=scoring,
+                              use_dask=dask, 
+                              config_dict=params, 
+                              warm_start=True, memory='auto')
         tpot.fit(X_train, y_train)
         
     elif params is None and regress is True:       
-        tpot = TPOTRegressor(generations=5, population_size=50, verbosity=2,
-                              n_jobs=cores, scoring = scoring,
-                              warm_start=True)
+        tpot = TPOTRegressor(generations=gen, population_size=popsize, 
+                             verbosity=verbosity,
+                             n_jobs=cores, scoring=scoring,
+                             use_dask=dask, warm_start=True, memory='auto')
         tpot.fit(X_train, y_train)
         
     elif params != None and regress is True:
-        tpot = TPOTRegressor(config_dict=params, n_jobs=cores, verbosity=2,
-                             scoring = scoring,
-                              warm_start=True)
+        tpot = TPOTRegressor(generations=gen, population_size=popsize,
+                             config_dict=params, n_jobs=cores, 
+                             verbosity=verbosity,
+                             scoring=scoring,
+                             use_dask=dask, 
+                             warm_start=True, memory='auto')
         tpot.fit(X_train, y_train)
 
-    tpot.export(outModel)    
+    tpot.export(outModel)
+    
+    #TODO
+    # how'd we export the pipline as an object then simply load to predict?
+    
+    #joblib.dump(tpot, 
+    
+    return tpot
+
+    
 
 
-def create_model(X_train, outModel, clf='svc', random=False, cv=6, cores=-1,
+def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
                  strat=True, regress=False, params = None, scoring=None, 
-                 ply=False, save=True):
+                 ply=True, save=True):
     
     """
     Brute force or random model creating using scikit learn. Either use the
@@ -804,14 +847,11 @@ def plot_feature_importances(modelPth, featureNames, model_type='scikit'):
     plt.ylim(-1, n_features)
     plt.show()
 
-
-def get_training_ply(incld, label_field="training", classif_field='label',
-                     rgb=True, outFile=None,  
-                     ignore=['x', 'y', 'scalar_ScanAngleRank', 'scalar_NumberOfReturns',
-                         'scalar_ReturnNumber', 'scalar_GpsTime','scalar_PointSourceId']):
+def get_training_ply(incld, label_field="training", feattype='cgal',
+                     rgb=True, outFile=None, k=5, add_fields=None):
     
     """ 
-    Get training from a point cloud
+    Get training from a point cloud on the fly via either cgal or pyntcloud
     
     
     Parameters 
@@ -823,18 +863,25 @@ def get_training_ply(incld, label_field="training", classif_field='label',
     label_field: string
               the name of the field representing the training points which must
               be positive integers
+    
+    feattype: string
+                either cgal or std
               
-    classif_field: string
-              the name of the field that will be used for classification later
-              must be specified so it can be ignored
     rgb: bool
-              whether there is rgb data to be included             
+              whether there is rgb data to be included           
                 
     outFile: string
                path to training array to be saved as .gz via joblib
     
-    ignore: list
-           the pointcloud attributes to ignore for training
+    k: int or list of ints
+        the number of scales at which to calculate features
+        if cgal features an int eg 5
+        if std features a list of ints eg [20, 40, 60]
+    
+    add_fields: list of strings
+        additional fields to be included as features
+        e.g. for a LiDAR file ['Intensity', 'NumberOfReturns']
+    
     Returns
     -------
     
@@ -843,45 +890,42 @@ def get_training_ply(incld, label_field="training", classif_field='label',
     list of feature names for later ref/plotting
 
     """  
+    # feats
+    if feattype == 'cgal':
+        featdf = cgal_features_mem(incld,  k=k, rgb=rgb, parallel=True)
+    else:
+        featdf = std_features(incld, outcld=None, k=k,
+                 props=['anisotropy', "curvature", "eigenentropy", "eigen_sum",
+                         "linearity","omnivariance", "planarity", "sphericity"],
+                        nrm_props=None, tofile=False)
+        pass
     
+    # labels
     pcd = PyntCloud.from_file(incld)
     
-    dF = pcd.points
+    labels = pcd.points[label_field].to_numpy()
+    
+    labels.shape = (labels.shape[0], 1)
+    
+    # think z may have been no good...
+    #featdf['z'] = pcd.points['z'].to_numpy()
+    
+    if rgb == True:
+        featdf['red'] = pcd.points['red'].to_numpy()
+        featdf['green'] = pcd.points['green'].to_numpy()
+        featdf['blue'] = pcd.points['blue'].to_numpy()
+    
+    if add_fields != None:
+        # could be adding return no, intensity etc if it is LiDAR
+        for a in add_fields:
+            featdf[a] = pcd.points[a.to_numpy]
+        
+    X_train = np.hstack((labels, featdf.to_numpy()))
 
-    # Must be done sperately otherwise py appends to list outside of function
-    if classif_field != None:
-        del dF[classif_field]
-
+    # retain feat names for plot potential and later reminders
+    fnames = list(featdf.columns)
     
-    # If any of the above list exists, cut them from the dF
-
-    cols = dF.columns.to_list()
-
-    for i in ignore:
-        if i in cols:
-            del dF[i]
-    del cols
-#    pProps =['anisotropy', 'curvature', "eigenentropy", "eigen_sum",
-#             "linearity", "omnivariance", "planarity", "sphericity"]
-    
-    # python bug this var persists/pointer or somehting
-    del ignore      
-   
-    label = dF[label_field].to_numpy()
-    
-    del dF[label_field]
-    
-    features = dF.to_numpy()
-    
-    label.shape = (label.shape[0], 1)
-    
-    X_train = np.hstack((label, features))
-    
-    # retain feat names for plot potentiallu
-    
-    fnames = dF.columns.to_list()
-    
-    del features, dF, label
+    del featdf, labels
     
     # prep for sklearn
     X_train = X_train[X_train[:,0] >= 0]
@@ -889,19 +933,23 @@ def get_training_ply(incld, label_field="training", classif_field='label',
     # Remove non-finite values
     X_train = X_train[np.isfinite(X_train).all(axis=1)]
     
-
+    # dump it
     if outFile != None:
         jb.dump(X_train, outFile, compress=2)
     
     return X_train, fnames
 
-def get_training_tiles(folder, label_field="training", classif_field='label',
-                     rgb=True, outFile=None,  
-                     ignore=['x', 'y', 'scalar_ScanAngleRank', 'scalar_NumberOfReturns',
-                         'scalar_ReturnNumber', 'scalar_GpsTime','scalar_PointSourceId']):
+
+
+
+def get_training_tiles(folder, label_field="training",
+                     rgb=True, outFile=None, k=5, feattype='cgal',
+                     add_fields=None):
     
     """ 
-    Get training from a point cloud
+    Get training from multiple point clouds in a directory
+    Features are calculated on the fly, so expect ~ 8mins per 6.4 million points
+    (typically that's 53 features per point...)
     
     
     Parameters 
@@ -923,8 +971,18 @@ def get_training_tiles(folder, label_field="training", classif_field='label',
     outFile: string
                path to training array to be saved as .gz via joblib
     
-    ignore: list
-           the pointcloud attributes to ignore for training
+    k: int or list of ints
+        the number of scales at which to calcualte features
+        if cgal features an int eg 5
+        if std features a list of ints eg [20, 40, 60]
+    
+    feattype: string
+               feature type either cgal or std
+
+    add_fields: list of strings
+        additional fields to be included as features
+        e.g. for a LiDAR file ['Intensity', 'NumberOfReturns']
+        
     Returns
     -------
     
@@ -942,11 +1000,10 @@ def get_training_tiles(folder, label_field="training", classif_field='label',
     trainlist = []
     
     for f in plylist:
-    
+        
         train, fnames = get_training_ply(f, label_field=label_field, 
-                                           classif_field=classif_field,
-                                           rgb=rgb, outFile=None,
-                                           ignore=ignore)
+                     rgb=rgb, outFile=None, k=k, add_fields=add_fields)
+    
         trainlist.append(train)
         del train
     
@@ -959,70 +1016,82 @@ def get_training_tiles(folder, label_field="training", classif_field='label',
     
     
 
-def classify_ply(incld, inModel, train_field="training", class_field='label',
-                 rgb=True, outcld=None,
-                 ignore=['x', 'y', 'scalar_ScanAngleRank', 'scalar_NumberOfReturns',
-                         'scalar_ReturnNumber', 'scalar_GpsTime','scalar_PointSourceId']):
+def classify_ply(incld, inModel, class_field='label',
+                 rgb=True, outcld=None, feattype='cgal', k=5,
+                 add_fields=None):
     
     """ 
-    Classify a point cloud (ply format)
+    Classify a point cloud (ply format) with amodel generated with this lib
     
+    Features MUST match exactly of course, including add_fields
+    
+    As with previous funcs features are calculated on the fly to avoid huge files,
+    so expect processing of ~6 million points (*53 features with k=5) to take
+    8 minutes + classification time
     
     Parameters 
     ----------- 
     
     incld: string
               the input point cloud
+    
+    inModel: string
+          the input point cloud
+    
                 
     class_field: string
                the name of the field that the results will be written to
-               this must already exist! Create in CldComp. or cgal
-    train_field: string
-              the name of the training label field so it can be ignored
-    
+               this could already exist, if not will be created
+               
     rgb: bool
         whether there is rgb data to be included
                  
     outcld: string
                path to a new ply to write if not writing to the input one
-   
-    ignore: list
-           the pointcloud attributes to ignore for classification
+               
+    feattype: string
+               feature type previously used either cgal or std
+               
+    k: int or list of ints
+        the number of scales at which to calcualte features
+        if cgal features an int eg 5
+        if std features a list of ints eg [20, 40, 60]
+
+    add_fields: list of strings
+        additional fields to be included as features
+        e.g. for a LiDAR file ['Intensity', 'NumberOfReturns']
+
     """  
     
     
     # TODO - I/O classify by chunk?
     
+    if feattype == 'cgal':
+        featdf = cgal_features_mem(incld,  k=k, rgb=rgb, parallel=True)
+    else:
+        featdf = std_features(incld, outcld=None, k=k,
+                 props=['anisotropy', "curvature", "eigenentropy", "eigen_sum",
+                         "linearity","omnivariance", "planarity", "sphericity"],
+                        nrm_props=None, tofile=False)
+
+    
     pcd = PyntCloud.from_file(incld)
     
-    dF = pcd.points
+    if rgb == True:
+        featdf['red'] = pcd.points['red'].to_numpy()
+        featdf['green'] = pcd.points['green'].to_numpy()
+        featdf['blue'] = pcd.points['blue'].to_numpy()
     
-    # required to ensure we don't lose field later
-    # bloody classes
-    del pcd
-    
-    # Must be done sperately otherwise py appends to list outside of function
-    del dF[class_field]
-    del dF[train_field]
-
-    # If any of the above list exists, cut them from the dF
-    cols = dF.columns.to_list()
-
-    for i in ignore:
-
-        if i in cols:
-            del dF[i]
-
-    del cols
-    
-    # python bug this var persists/pointer or somehting
-    del ignore        
-    
-    X = dF.to_numpy()
+    if add_fields != None:
+        # could be adding return no, intensity etc if it is LiDAR
+        for a in add_fields:
+            featdf[a] = pcd.points[a.to_numpy]
+           
+    X = featdf.to_numpy()
     
     X[np.where(np.isnan(X))]=0
     X = X[np.isfinite(X).all(axis=1)]
-    del dF
+    del featdf
     print('Classifying')
     
     # if a keras model
@@ -1031,12 +1100,9 @@ def classify_ply(incld, inModel, train_field="training", class_field='label',
         predictClass = model1.predict(X)
         # get the class based on the location of highest prob
         predictClass = np.argmax(predictClass,axis=1)
-    else:  
+    else:
         model1 = joblib.load(inModel)
         predictClass = model1.predict(X)
-
-    # read the files in again due to the earlier issue
-    pcd = PyntCloud.from_file(incld)
     
     pcd.points[class_field] = np.int32(predictClass)
     
@@ -1046,14 +1112,19 @@ def classify_ply(incld, inModel, train_field="training", class_field='label',
         pcd.to_file(outcld)
 
 
-def classify_ply_tile(folder, inModel, train_field="training", class_field='label',
-                 rgb=True, outcld=None,
-                 ignore=['x', 'y', 'scalar_ScanAngleRank', 'scalar_NumberOfReturns',
-                         'scalar_ReturnNumber', 'scalar_GpsTime','scalar_PointSourceId']):
+def classify_ply_tile(folder, inModel,  class_field='label',
+                 rgb=True, k=5,  feattype='cgal', add_fields=None):
+    
     """ 
-    Classify a point cloud (ply format)
+    Classify a point clouds in a directory
     
+    Features MUST match exactly of course, including add_fields
     
+    As with previous funcs features are calculated on the fly to avoid huge files,
+    so expect processing of ~6 million points (*53 features with k=5) to take
+    8 minutes + classification time
+    
+     
     Parameters 
     ----------- 
     
@@ -1062,18 +1133,30 @@ def classify_ply_tile(folder, inModel, train_field="training", class_field='labe
                 
     class_field: string
                the name of the field that the results will be written to
-               this must already exist! Create in CldComp. or cgal
-    train_field: string
-              the name of the training label field so it can be ignored
+               this could already exist, if not will be created
     
     rgb: bool
         whether there is rgb data to be included
                  
     outcld: string
                path to a new ply to write if not writing to the input one
+               
+    rgb: bool
+        whether there is rgb data to be included        
+               
+    feattype: string
+               feature type previously used either cgal or std
+               
+    k: int or list of ints
+        the number of scales at which to calcualte features
+        if cgal features an int eg 5
+        if std features a list of ints eg [20, 40, 60]
+    
+    add_fields: list of strings
+        additional fields to be included as features
+        e.g. for a LiDAR file ['Intensity', 'NumberOfReturns']
    
-    ignore: list
-           the pointcloud attributes to ignore for classification
+
     """ 
             
             
@@ -1081,11 +1164,12 @@ def classify_ply_tile(folder, inModel, train_field="training", class_field='labe
     plylist.sort()
     
     for f in plylist:
-        classify_ply(f, inModel, train_field=train_field,
-                     class_field=class_field,
-                     rgb=rgb, outcld=None,
-                     ignore=ignore)
-    
+        
+        classify_ply(f, inModel, class_field=class_field,
+                 rgb=rgb, outcld=None, feattype=feattype, k=k,
+                 add_fields=add_fields)
+        
+
 def rmse_vector_lyr(inShape, attributes):
 
     """ 

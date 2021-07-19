@@ -13,6 +13,8 @@
   
   <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
   <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
 
   
   
@@ -29,6 +31,7 @@
   
     
       <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
         <script src="_static/jquery.js"></script>
         <script src="_static/underscore.js"></script>
         <script src="_static/doctools.js"></script>
@@ -189,9 +192,10 @@
 <h3>Description<a class="headerlink" href="#description" title="Permalink to this headline">¶</a></h3>
 <p>Point cloud properties and manipulation in python</p>
 <dl class="py function">
-<dt id="pointutils.props.cgal_features">
-<code class="sig-prename descclassname"><span class="pre">pointutils.props.</span></code><code class="sig-name descname"><span class="pre">cgal_features</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parallel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.cgal_features" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="pointutils.props.cgal_features">
+<span class="sig-prename descclassname"><span class="pre">pointutils.props.</span></span><span class="sig-name descname"><span class="pre">cgal_features</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parallel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.cgal_features" title="Permalink to this definition">¶</a></dt>
 <dd><p>Calculate CGAL-based point cloud features and write to file.</p>
+<p>Files will be hefty!</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
@@ -199,30 +203,52 @@
 <li><p><strong>outcld</strong> (<em>string</em>) – the output point cloud if None then write to incld</p></li>
 <li><p><strong>k</strong> (<em>int</em>) – he no of scales at which to calculate features</p></li>
 <li><p><strong>rgb</strong> (<em>bool</em>) – whether to include RGB-based features</p></li>
+<li><p><strong>parallel</strong> (<em>bool</em>) – if true, process multi thread</p></li>
+<li><p><strong>tofile</strong> (<em>bool</em>) – whether to write the attributes to file or return in memory</p></li>
 </ul>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt id="pointutils.props.cgal_features_tile">
-<code class="sig-prename descclassname"><span class="pre">pointutils.props.</span></code><code class="sig-name descname"><span class="pre">cgal_features_tile</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">folder</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.cgal_features_tile" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="pointutils.props.cgal_features_mem">
+<span class="sig-prename descclassname"><span class="pre">pointutils.props.</span></span><span class="sig-name descname"><span class="pre">cgal_features_mem</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parallel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.cgal_features_mem" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculate CGAL-based point cloud features and return as a pandas df.
+Saves on disk space but many of these will take longer.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>incld</strong> (<em>string</em>) – the input point cloud</p></li>
+<li><p><strong>k</strong> (<em>int</em>) – he no of scales at which to calculate features</p></li>
+<li><p><strong>rgb</strong> (<em>bool</em>) – whether to include RGB-based features</p></li>
+<li><p><strong>parallel</strong> (<em>bool</em>) – if true, process multi thread</p></li>
+<li><p><strong>tofile</strong> (<em>bool</em>) – whether to write the attributes to file or return in memory</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pointutils.props.cgal_features_tile">
+<span class="sig-prename descclassname"><span class="pre">pointutils.props.</span></span><span class="sig-name descname"><span class="pre">cgal_features_tile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">folder</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.cgal_features_tile" title="Permalink to this definition">¶</a></dt>
 <dd><p>Calculate CGAL-based point cloud features for a folder containing ply files
-Feature attributes will be written to the input ply files</p>
+Feature attributes will be written to the input ply files.</p>
+<p>Files will be hefty!</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>folder</strong> (<em>string</em>) – the input folder containing .ply tiles</p></li>
 <li><p><strong>k</strong> (<em>int</em>) – he no of scales at which to calculate features</p></li>
 <li><p><strong>rgb</strong> (<em>bool</em>) – whether to include RGB-based features</p></li>
+<li><p><strong>nt</strong> (<em>int</em>) – number of threads to use in processing</p></li>
 </ul>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt id="pointutils.props.std_features">
-<code class="sig-prename descclassname"><span class="pre">pointutils.props.</span></code><code class="sig-name descname"><span class="pre">std_features</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[50,</span> <span class="pre">100,</span> <span class="pre">200]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">props</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['anisotropy',</span> <span class="pre">'curvature',</span> <span class="pre">'eigenentropy',</span> <span class="pre">'eigen_sum',</span> <span class="pre">'linearity',</span> <span class="pre">'omnivariance',</span> <span class="pre">'planarity',</span> <span class="pre">'sphericity']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nrm_props</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.std_features" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="pointutils.props.std_features">
+<span class="sig-prename descclassname"><span class="pre">pointutils.props.</span></span><span class="sig-name descname"><span class="pre">std_features</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[50,</span> <span class="pre">100,</span> <span class="pre">200]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">props</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['anisotropy',</span> <span class="pre">'curvature',</span> <span class="pre">'eigenentropy',</span> <span class="pre">'eigen_sum',</span> <span class="pre">'linearity',</span> <span class="pre">'omnivariance',</span> <span class="pre">'planarity',</span> <span class="pre">'sphericity']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nrm_props</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tofile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.std_features" title="Permalink to this definition">¶</a></dt>
 <dd><p>Calculate point cloud features and write to file, over a range of k-scales</p>
 <p>‘anisotropy’, “curvature”, “eigenentropy”, “eigen_sum”,
 “linearity”,”omnivariance”, “planarity”, “sphericity”</p>
@@ -236,6 +262,7 @@ multiple is more effective</p></li>
 <li><p><strong>props</strong> (<em>list</em>) – the properties you wish to include</p></li>
 <li><p><strong>nrm_props</strong> (<em>list</em>) – properties based on normals if the exist (this will fail if they don’t)
 e.g. [“inclination_radians”,  “orientation_radians”]</p></li>
+<li><p><strong>tofile</strong> (<em>bool</em>) – if true write to pointcloud if false return a df of the features</p></li>
 </ul>
 </dd>
 </dl>
@@ -250,8 +277,8 @@ e.g. [“inclination_radians”,  “orientation_radians”]</p></li>
 <h3>Description<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h3>
 <p>machine learning applied to point clouds</p>
 <dl class="py function">
-<dt id="pointutils.learning.RF_oob_opt">
-<code class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></code><code class="sig-name descname"><span class="pre">RF_oob_opt</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">X_train</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_est</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_est</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regress</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.RF_oob_opt" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="pointutils.learning.RF_oob_opt">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">RF_oob_opt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">X_train</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_est</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_est</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regress</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.RF_oob_opt" title="Permalink to this definition">¶</a></dt>
 <dd><p>This function uses the oob score to find the best parameters.</p>
 <p>This cannot be parallelized due to the warm start bootstrapping, so is
 potentially slower than the other cross val in the create_model function</p>
@@ -275,46 +302,72 @@ potentially slower than the other cross val in the create_model function</p>
 </dd></dl>
 
 <dl class="py function">
-<dt id="pointutils.learning.classify_ply">
-<code class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></code><code class="sig-name descname"><span class="pre">classify_ply</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">train_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'training'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">class_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'label'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['x',</span> <span class="pre">'y',</span> <span class="pre">'scalar_ScanAngleRank',</span> <span class="pre">'scalar_NumberOfReturns',</span> <span class="pre">'scalar_ReturnNumber',</span> <span class="pre">'scalar_GpsTime',</span> <span class="pre">'scalar_PointSourceId']</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.classify_ply" title="Permalink to this definition">¶</a></dt>
-<dd><p>Classify a point cloud (ply format)</p>
+<dt class="sig sig-object py" id="pointutils.learning.classify_ply">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">classify_ply</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">class_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'label'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feattype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cgal'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_fields</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.classify_ply" title="Permalink to this definition">¶</a></dt>
+<dd><p>Classify a point cloud (ply format) with amodel generated with this lib</p>
+<p>Features MUST match exactly of course, including add_fields</p>
+<p>As with previous funcs features are calculated on the fly to avoid huge files,
+so expect processing of ~6 million points (<a href="#id2"><span class="problematic" id="id3">*</span></a>53 features with k=5) to take
+8 minutes + classification time</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>incld</strong> (<em>string</em>) – the input point cloud</p></li>
-<li><p><strong>class_field</strong> (<em>string</em>) – the name of the field that the results will be written to
-this must already exist! Create in CldComp. or cgal</p></li>
-<li><p><strong>train_field</strong> (<em>string</em>) – the name of the training label field so it can be ignored</p></li>
-<li><p><strong>rgb</strong> (<em>bool</em>) – whether there is rgb data to be included</p></li>
-<li><p><strong>outcld</strong> (<em>string</em>) – path to a new ply to write if not writing to the input one</p></li>
-<li><p><strong>ignore</strong> (<em>list</em>) – the pointcloud attributes to ignore for classification</p></li>
+<li><p><strong>inModel</strong> (<em>string</em>) – the input point cloud</p></li>
 </ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>class_field: string</dt><dd><p>the name of the field that the results will be written to
+this could already exist, if not will be created</p>
+</dd>
+<dt>rgb: bool</dt><dd><p>whether there is rgb data to be included</p>
+</dd>
+<dt>outcld: string</dt><dd><p>path to a new ply to write if not writing to the input one</p>
+</dd>
+<dt>feattype: string</dt><dd><p>feature type previously used either cgal or std</p>
+</dd>
+<dt>k: int or list of ints</dt><dd><p>the number of scales at which to calcualte features
+if cgal features an int eg 5
+if std features a list of ints eg [20, 40, 60]</p>
+</dd>
+<dt>add_fields: list of strings</dt><dd><p>additional fields to be included as features
+e.g. for a LiDAR file [‘Intensity’, ‘NumberOfReturns’]</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt id="pointutils.learning.classify_ply_tile">
-<code class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></code><code class="sig-name descname"><span class="pre">classify_ply_tile</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">folder</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">train_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'training'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">class_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'label'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['x',</span> <span class="pre">'y',</span> <span class="pre">'scalar_ScanAngleRank',</span> <span class="pre">'scalar_NumberOfReturns',</span> <span class="pre">'scalar_ReturnNumber',</span> <span class="pre">'scalar_GpsTime',</span> <span class="pre">'scalar_PointSourceId']</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.classify_ply_tile" title="Permalink to this definition">¶</a></dt>
-<dd><p>Classify a point cloud (ply format)</p>
+<dt class="sig sig-object py" id="pointutils.learning.classify_ply_tile">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">classify_ply_tile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">folder</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">class_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'label'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feattype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cgal'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_fields</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.classify_ply_tile" title="Permalink to this definition">¶</a></dt>
+<dd><p>Classify a point clouds in a directory</p>
+<p>Features MUST match exactly of course, including add_fields</p>
+<p>As with previous funcs features are calculated on the fly to avoid huge files,
+so expect processing of ~6 million points (<a href="#id4"><span class="problematic" id="id5">*</span></a>53 features with k=5) to take
+8 minutes + classification time</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>folder</strong> (<em>string</em>) – the input folder containing .ply files</p></li>
 <li><p><strong>class_field</strong> (<em>string</em>) – the name of the field that the results will be written to
-this must already exist! Create in CldComp. or cgal</p></li>
-<li><p><strong>train_field</strong> (<em>string</em>) – the name of the training label field so it can be ignored</p></li>
+this could already exist, if not will be created</p></li>
 <li><p><strong>rgb</strong> (<em>bool</em>) – whether there is rgb data to be included</p></li>
 <li><p><strong>outcld</strong> (<em>string</em>) – path to a new ply to write if not writing to the input one</p></li>
-<li><p><strong>ignore</strong> (<em>list</em>) – the pointcloud attributes to ignore for classification</p></li>
+<li><p><strong>rgb</strong> (<em>bool</em>) – whether there is rgb data to be included</p></li>
+<li><p><strong>feattype</strong> (<em>string</em>) – feature type previously used either cgal or std</p></li>
+<li><p><strong>k</strong> (<em>int or list of ints</em>) – the number of scales at which to calcualte features
+if cgal features an int eg 5
+if std features a list of ints eg [20, 40, 60]</p></li>
+<li><p><strong>add_fields</strong> (<em>list of strings</em>) – additional fields to be included as features
+e.g. for a LiDAR file [‘Intensity’, ‘NumberOfReturns’]</p></li>
 </ul>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt id="pointutils.learning.create_model">
-<code class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></code><code class="sig-name descname"><span class="pre">create_model</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X_train</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'svc'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cv</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">6</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cores</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regress</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scoring</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ply</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.create_model" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="pointutils.learning.create_model">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">create_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X_train</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'svc'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cv</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cores</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regress</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scoring</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ply</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.create_model" title="Permalink to this definition">¶</a></dt>
 <dd><p>Brute force or random model creating using scikit learn. Either use the
 default params in this function or enter your own (recommended - see sklearn)</p>
 <dl class="field-list">
@@ -354,13 +407,13 @@ multi-class, regression etc - see the sklearn docs!</p>
 </dd></dl>
 
 <dl class="py function">
-<dt id="pointutils.learning.create_model_tpot">
-<code class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></code><code class="sig-name descname"><span class="pre">create_model_tpot</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X_train</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cv</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">6</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cores</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regress</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scoring</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.create_model_tpot" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="pointutils.learning.create_model_tpot">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">create_model_tpot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X_train</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gen</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">popsize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cv</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cores</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regress</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scoring</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbosity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.create_model_tpot" title="Permalink to this definition">¶</a></dt>
 <dd><p>Create a model using the tpot library where genetic algorithms
 are used to optimise pipline and params.</p>
-<dl class="field-list simple">
+<dl class="field-list">
 <dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
+<dd class="field-odd"><ul>
 <li><p><strong>X_train</strong> (<em>np array</em>) – numpy array of training data where the 1st column is labels</p></li>
 <li><p><strong>outModel</strong> (<em>string</em>) – the output model path (which is a .py file)
 from which to run the pipeline</p></li>
@@ -368,28 +421,49 @@ from which to run the pipeline</p></li>
 <li><p><strong>cores</strong> (<em>int or -1 (default)</em>) – the no of parallel jobs</p></li>
 <li><p><strong>strat</strong> (<em>bool</em>) – a stratified grid search</p></li>
 <li><p><strong>regress</strong> (<em>bool</em>) – a regression model if True, a classifier if False</p></li>
-<li><p><strong>params</strong> (<em>a dict of model params (see tpot)</em>) – enter your own params dict rather than the range provided</p></li>
-<li><p><strong>scoring</strong> (<em>string</em>) – a suitable sklearn scoring type (see notes)</p></li>
+<li><p><strong>params</strong> (<em>a dict of model params (see tpot)</em>) – enter your own params dict rather than the range provided
+e.g.
+{‘sklearn.ensemble.RandomForestClassifier’: {“n_estimators”: [200],</p>
+<blockquote>
+<div><p>“max_features”: [‘sqrt’, ‘log2’],
+“max_depth”: [10, None],</p>
+</div></blockquote>
+</li>
+<li><p><strong>},</strong></p></li>
+<li><p><strong>‘xgboost.sklearn.XGBClassifier’</strong> (<em>{</em>) –</p>
+<dl class="simple">
+<dt>‘n_estimators’: [200],</dt><dd><p>‘learning_rate’: [0.1, 0.2, 0.4]</p>
+</dd>
+</dl>
+</li>
+<li><p><strong>}}</strong></p></li>
 </ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>scoring: string</dt><dd><p>a suitable sklearn scoring type (see notes)</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt id="pointutils.learning.get_training_ply">
-<code class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></code><code class="sig-name descname"><span class="pre">get_training_ply</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'training'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">classif_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'label'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outFile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['x',</span> <span class="pre">'y',</span> <span class="pre">'scalar_ScanAngleRank',</span> <span class="pre">'scalar_NumberOfReturns',</span> <span class="pre">'scalar_ReturnNumber',</span> <span class="pre">'scalar_GpsTime',</span> <span class="pre">'scalar_PointSourceId']</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.get_training_ply" title="Permalink to this definition">¶</a></dt>
-<dd><p>Get training from a point cloud</p>
+<dt class="sig sig-object py" id="pointutils.learning.get_training_ply">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">get_training_ply</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'training'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feattype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cgal'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outFile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_fields</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.get_training_ply" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get training from a point cloud on the fly via either cgal or pyntcloud</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>incld</strong> (<em>string</em>) – the input point cloud</p></li>
 <li><p><strong>label_field</strong> (<em>string</em>) – the name of the field representing the training points which must
 be positive integers</p></li>
-<li><p><strong>classif_field</strong> (<em>string</em>) – the name of the field that will be used for classification later
-must be specified so it can be ignored</p></li>
+<li><p><strong>feattype</strong> (<em>string</em>) – either cgal or std</p></li>
 <li><p><strong>rgb</strong> (<em>bool</em>) – whether there is rgb data to be included</p></li>
 <li><p><strong>outFile</strong> (<em>string</em>) – path to training array to be saved as .gz via joblib</p></li>
-<li><p><strong>ignore</strong> (<em>list</em>) – the pointcloud attributes to ignore for training</p></li>
+<li><p><strong>k</strong> (<em>int or list of ints</em>) – the number of scales at which to calculate features
+if cgal features an int eg 5
+if std features a list of ints eg [20, 40, 60]</p></li>
+<li><p><strong>add_fields</strong> (<em>list of strings</em>) – additional fields to be included as features
+e.g. for a LiDAR file [‘Intensity’, ‘NumberOfReturns’]</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
@@ -403,9 +477,11 @@ must be specified so it can be ignored</p></li>
 </dd></dl>
 
 <dl class="py function">
-<dt id="pointutils.learning.get_training_tiles">
-<code class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></code><code class="sig-name descname"><span class="pre">get_training_tiles</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">folder</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'training'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">classif_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'label'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outFile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['x',</span> <span class="pre">'y',</span> <span class="pre">'scalar_ScanAngleRank',</span> <span class="pre">'scalar_NumberOfReturns',</span> <span class="pre">'scalar_ReturnNumber',</span> <span class="pre">'scalar_GpsTime',</span> <span class="pre">'scalar_PointSourceId']</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.get_training_tiles" title="Permalink to this definition">¶</a></dt>
-<dd><p>Get training from a point cloud</p>
+<dt class="sig sig-object py" id="pointutils.learning.get_training_tiles">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">get_training_tiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">folder</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'training'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outFile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feattype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cgal'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_fields</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.get_training_tiles" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get training from multiple point clouds in a directory
+Features are calculated on the fly, so expect ~ 8mins per 6.4 million points
+(typically that’s 53 features per point…)</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
@@ -416,7 +492,12 @@ be positive integers</p></li>
 must be specified so it can be ignored</p></li>
 <li><p><strong>rgb</strong> (<em>bool</em>) – whether there is rgb data to be included</p></li>
 <li><p><strong>outFile</strong> (<em>string</em>) – path to training array to be saved as .gz via joblib</p></li>
-<li><p><strong>ignore</strong> (<em>list</em>) – the pointcloud attributes to ignore for training</p></li>
+<li><p><strong>k</strong> (<em>int or list of ints</em>) – the number of scales at which to calcualte features
+if cgal features an int eg 5
+if std features a list of ints eg [20, 40, 60]</p></li>
+<li><p><strong>feattype</strong> (<em>string</em>) – feature type either cgal or std</p></li>
+<li><p><strong>add_fields</strong> (<em>list of strings</em>) – additional fields to be included as features
+e.g. for a LiDAR file [‘Intensity’, ‘NumberOfReturns’]</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
@@ -430,8 +511,8 @@ must be specified so it can be ignored</p></li>
 </dd></dl>
 
 <dl class="py function">
-<dt id="pointutils.learning.plot_feature_importances">
-<code class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></code><code class="sig-name descname"><span class="pre">plot_feature_importances</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">modelPth</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">featureNames</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'scikit'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.plot_feature_importances" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="pointutils.learning.plot_feature_importances">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">plot_feature_importances</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">modelPth</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">featureNames</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'scikit'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.plot_feature_importances" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plot the feature importances of an ensemble classifier</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -444,8 +525,8 @@ must be specified so it can be ignored</p></li>
 </dd></dl>
 
 <dl class="py function">
-<dt id="pointutils.learning.rmse_vector_lyr">
-<code class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></code><code class="sig-name descname"><span class="pre">rmse_vector_lyr</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inShape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attributes</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.rmse_vector_lyr" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="pointutils.learning.rmse_vector_lyr">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">rmse_vector_lyr</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inShape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attributes</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.rmse_vector_lyr" title="Permalink to this definition">¶</a></dt>
 <dd><p>Using sklearn get the rmse of 2 vector attributes
 (the actual and predicted of course in the order [‘actual’, ‘pred’])</p>
 <dl class="field-list simple">

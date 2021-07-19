@@ -27,6 +27,7 @@ dependencies:
   - tpot
   - glob2
   - tqdm
+  - dask-ml
 
   - pip:
     - git+https://github.com/Ciaran1981/pointutils

@@ -27,6 +27,12 @@ User installation
    
 conda env create -f pointutils_env.yml
 
+Alternatively, for a shorter wait (conda is quite slow these days), the mamba system is recommended, install this in your base conda then:
+
+.. code-block:: bash
+
+mamba env create -f pointutils_env.yml
+
 4. To activate - type
 
 .. code-block:: bash

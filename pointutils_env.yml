@@ -19,6 +19,7 @@ dependencies:
   - scikit-learn
   - cgal
   - pdal
+  - python-pdal
   - gdal
   - pyntcloud
   - tensorflow-gpu 
@@ -28,6 +29,7 @@ dependencies:
   - glob2
   - tqdm
   - dask-ml
+  - auto-sklearn
 
   - pip:
     - git+https://github.com/Ciaran1981/pointutils

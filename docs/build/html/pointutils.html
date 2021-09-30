@@ -247,6 +247,28 @@ Feature attributes will be written to the input ply files.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="pointutils.props.grid_cloud">
+<span class="sig-prename descclassname"><span class="pre">pointutils.props.</span></span><span class="sig-name descname"><span class="pre">grid_cloud</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outfile</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attribute</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'label'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reader</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'readers.ply'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">writer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'writers.gdal'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spref</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'EPSG:21818'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'uint16_t'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'mean'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">resolution</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.grid_cloud" title="Permalink to this definition">¶</a></dt>
+<dd><p>Grid a pointcloud attribute using pdal</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>incld</strong> (<em>string</em>) – input cloud</p></li>
+<li><p><strong>outfile</strong> (<em>string</em>) – output cloud</p></li>
+<li><p><strong>attribute</strong> (<em>string</em>) – the pointcloud attribute/dimension to rasterize
+e.g. label, classification etc</p></li>
+<li><p><strong>reader</strong> (<em>string</em>) – the pdal reader type (see pdal readers)</p></li>
+<li><p><strong>writer</strong> (<em>string</em>) – the pdal reader type (see pdal writers)</p></li>
+<li><p><strong>spref</strong> (<em>string</em>) – spatial ref in ESPG format</p></li>
+<li><p><strong>dtype</strong> (<em>string</em>) – dtype in pdal format (see pdal)</p></li>
+<li><p><strong>outtype</strong> (<em>string</em>) – mean, min or max</p></li>
+<li><p><strong>resolution</strong> (<em>float</em>) – in the unit required</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="pointutils.props.std_features">
 <span class="sig-prename descclassname"><span class="pre">pointutils.props.</span></span><span class="sig-name descname"><span class="pre">std_features</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[50,</span> <span class="pre">100,</span> <span class="pre">200]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">props</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['anisotropy',</span> <span class="pre">'curvature',</span> <span class="pre">'eigenentropy',</span> <span class="pre">'eigen_sum',</span> <span class="pre">'linearity',</span> <span class="pre">'omnivariance',</span> <span class="pre">'planarity',</span> <span class="pre">'sphericity']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nrm_props</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tofile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.std_features" title="Permalink to this definition">¶</a></dt>
 <dd><p>Calculate point cloud features and write to file, over a range of k-scales</p>
@@ -297,6 +319,35 @@ potentially slower than the other cross val in the create_model function</p>
 <li><p><strong>———————–</strong></p></li>
 <li><p><strong>error rate, best estimator</strong></p></li>
 </ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pointutils.learning.classify_cgal">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">classify_cgal</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">classes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normal</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.classify_cgal" title="Permalink to this definition">¶</a></dt>
+<dd><p>classify a point cloud (ply format) with a model generated using CGAL
+(ETHZ Random forest})</p>
+<p>An evaluation will be printed</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>incld</strong> (<em>string</em>) – the input point cloud</p></li>
+<li><p><strong>outModel</strong> (<em>string</em>) – the input point cloud</p></li>
+<li><p><strong>classes</strong> (<em>list of strings</em>) – the class labels in order</p></li>
+<li><p><strong>k</strong> (<em>int or list of ints</em>) – the number of scales at which to calcualte features
+if cgal features an int eg 5</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>rgb: bool</dt><dd><p>whether there is rgb data to be included</p>
+</dd>
+<dt>method: string</dt><dd><p>default is None, otherwise smoothing ot graphcut</p>
+</dd>
+<dt>normal: bool</dt><dd><p>whether to include normals as features</p>
+</dd>
+<dt>outcld: string</dt><dd><p>path to a new ply to write if not writing to the input one</p>
 </dd>
 </dl>
 </dd></dl>
@@ -367,7 +418,7 @@ e.g. for a LiDAR file [‘Intensity’, ‘NumberOfReturns’]</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="pointutils.learning.create_model">
-<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">create_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X_train</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'svc'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cv</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cores</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regress</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scoring</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ply</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.create_model" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">create_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X_train</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'svc'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cv</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cores</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.3</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regress</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scoring</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">class_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ply</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.create_model" title="Permalink to this definition">¶</a></dt>
 <dd><p>Brute force or random model creating using scikit learn. Either use the
 default params in this function or enter your own (recommended - see sklearn)</p>
 <dl class="field-list">
@@ -387,10 +438,19 @@ grid search as multi-core overloads the GPUs quick!</p>
 <li><p><strong>cv</strong> (<em>int</em>) – no of folds</p></li>
 <li><p><strong>cores</strong> (<em>int or -1 (default)</em>) – the no of parallel jobs</p></li>
 <li><p><strong>strat</strong> (<em>bool</em>) – a stratified grid search</p></li>
+<li><p><strong>test_size</strong> (<em>float</em>) – percentage to hold out to test</p></li>
 <li><p><strong>regress</strong> (<em>bool</em>) – a regression model if True, a classifier if False</p></li>
 <li><p><strong>params</strong> (<em>a dict of model params (see scikit learn)</em>) – enter your own params dict rather than the range provided</p></li>
 <li><p><strong>scoring</strong> (<em>string</em>) – a suitable sklearn scoring type (see notes)</p></li>
+<li><p><strong>class_names</strong> (<em>list of strings</em>) – class names in order of their numercial equivalents</p></li>
 </ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><em>A list of</em></p></li>
+<li><p><em>[grid.best_estimator_, grid.cv_results_, grid.best_score_,</em> – <a href="#id8"><span class="problematic" id="id9">grid.best_params_</span></a>, classification_report)]</p></li>
+</ul>
+</p>
 </dd>
 </dl>
 <blockquote>
@@ -407,8 +467,77 @@ multi-class, regression etc - see the sklearn docs!</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="pointutils.learning.create_model_autosk">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">create_model_autosk</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X_train</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cores</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">class_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incld_est</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">excld_est</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incld_prep</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">excld_prep</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">total_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">120</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'cv':</span> <span class="pre">5}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mem_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per_run</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.3</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wrkfolder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scoring</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ply</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.create_model_autosk" title="Permalink to this definition">¶</a></dt>
+<dd><p>Auto-sklearn to create a model</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>X_train</strong> (<em>np array</em>) – numpy array of training data where the 1st column is labels</p></li>
+<li><p><strong>outModel</strong> (<em>string</em>) – the output model path which is a gz file, if using keras it is
+h5</p></li>
+<li><p><strong>cores</strong> (<em>int or -1 (default)</em>) – the no of parallel jobs</p></li>
+<li><p><strong>class_names</strong> (<em>list of strings</em>) – class names in order of their numercial equivalents</p></li>
+<li><p><strong>incld_est</strong> (<em>list of strings</em>) – estimators to included eg [‘random_forest’]</p></li>
+<li><p><strong>excld_est</strong> (<em>list of strings</em>) – estimators to excluded eg [‘random_forest’]</p></li>
+<li><p><strong>incld_prep</strong> (<em>list of strings</em>) – preproc to include</p></li>
+<li><p><strong>excld_prep</strong> (<em>list of strings</em>) – preproc to include</p></li>
+<li><p><strong>total_time</strong> (<em>int</em>) – time in seconds for the whole search process</p></li>
+<li><p><strong>res_args</strong> (<em>dict</em>) – strategy for overfit avoidance e.g. {‘cv’:5}</p></li>
+<li><p><strong>mem_limit</strong> (<em>int</em>) – memory limit per job</p></li>
+<li><p><strong>per_run</strong> (<em>int</em>) – time limit per run</p></li>
+<li><p><strong>test_size</strong> (<em>float</em>) – percentage to hold out to test</p></li>
+<li><p><strong>wrkfolder</strong> (<em>string</em>) – path to dir for intermediate working</p></li>
+<li><p><strong>scoring</strong> (<em>string</em>) – a suitable sklearn scoring type (see notes)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><em>A list of</em></p></li>
+<li><p><em>[model, classif_report]</em></p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pointutils.learning.create_model_cgal">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">create_model_cgal</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">classes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normal</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ntrees</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">depth</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">20</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.create_model_cgal" title="Permalink to this definition">¶</a></dt>
+<dd><p>train a point cloud (ply format) with a model generated using CGAL
+(ETHZ Random forest})</p>
+<p>This will use the point cloud for evaluation and write the test labels</p>
+<p>The training must be labeled ‘training’ in the header</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>incld</strong> (<em>string</em>) – the input point cloud</p></li>
+<li><p><strong>outModel</strong> (<em>string</em>) – the input point cloud</p></li>
+<li><p><strong>classes</strong> (<em>list of strings</em>) – the class labels in order</p></li>
+<li><p><strong>k</strong> (<em>int or list of ints</em>) – the number of scales at which to calcualte features
+if cgal features an int eg 5</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>rgb: bool</dt><dd><p>whether there is rgb data to be included</p>
+</dd>
+<dt>method: string</dt><dd><p>default is None, otherwise smoothing ot graphcut</p>
+</dd>
+<dt>normal: bool</dt><dd><p>whether to include normals as features</p>
+</dd>
+<dt>outcld: string</dt><dd><p>path to a new ply to write if not writing to the input one</p>
+</dd>
+<dt>ntrees: int</dt><dd><p>the no of trees for the ranndom forest</p>
+</dd>
+<dt>depth: int</dt><dd><p>depth of the random forest</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="pointutils.learning.create_model_tpot">
-<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">create_model_tpot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X_train</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gen</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">popsize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cv</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cores</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regress</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scoring</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbosity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.create_model_tpot" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">create_model_tpot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X_train</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gen</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">popsize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cv</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cores</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regress</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scoring</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbosity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">warm_start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.create_model_tpot" title="Permalink to this definition">¶</a></dt>
 <dd><p>Create a model using the tpot library where genetic algorithms
 are used to optimise pipline and params.</p>
 <dl class="field-list">
@@ -419,8 +548,8 @@ are used to optimise pipline and params.</p>
 from which to run the pipeline</p></li>
 <li><p><strong>cv</strong> (<em>int</em>) – no of folds</p></li>
 <li><p><strong>cores</strong> (<em>int or -1 (default)</em>) – the no of parallel jobs</p></li>
-<li><p><strong>strat</strong> (<em>bool</em>) – a stratified grid search</p></li>
 <li><p><strong>regress</strong> (<em>bool</em>) – a regression model if True, a classifier if False</p></li>
+<li><p><strong>test_size</strong> (<em>float</em>) – size of test set held out</p></li>
 <li><p><strong>params</strong> (<em>a dict of model params (see tpot)</em>) – enter your own params dict rather than the range provided
 e.g.
 {‘sklearn.ensemble.RandomForestClassifier’: {“n_estimators”: [200],</p>
@@ -442,6 +571,35 @@ e.g.
 </dl>
 <dl class="simple">
 <dt>scoring: string</dt><dd><p>a suitable sklearn scoring type (see notes)</p>
+</dd>
+<dt>warm_start: bool</dt><dd><p>use the previous population, useful if interactive</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pointutils.learning.extract_train_points">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">extract_train_points</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.extract_train_points" title="Permalink to this definition">¶</a></dt>
+<dd><p>Extract only the labeled points and save a new cloud</p>
+<dl class="simple">
+<dt>incld: string</dt><dd><p>the input ply</p>
+</dd>
+<dt>outcld: string</dt><dd><p>the output ply file</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pointutils.learning.fix_cgal_classes">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">fix_cgal_classes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clsdict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.fix_cgal_classes" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fix cgal classes wrongly relabelled* from the ply header</p>
+<p><a href="#id6"><span class="problematic" id="id7">*</span></a>This can happen if you reopen a previously labelled file and add to it</p>
+<dl class="simple">
+<dt>incld: string</dt><dd><p>input ply</p>
+</dd>
+<dt>clsdict: dict</dt><dd><p>dict of correct correspondence {‘tree’: 1, ‘building’: 2}</p>
+</dd>
+<dt>outcld: string</dt><dd><p>optional output ply, otherwise save to input</p>
 </dd>
 </dl>
 </dd></dl>
@@ -478,7 +636,7 @@ e.g. for a LiDAR file [‘Intensity’, ‘NumberOfReturns’]</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="pointutils.learning.get_training_tiles">
-<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">get_training_tiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">folder</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'training'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outFile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feattype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cgal'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_fields</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.get_training_tiles" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">get_training_tiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">folder</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'training'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outFile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feattype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cgal'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_fields</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parallel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.get_training_tiles" title="Permalink to this definition">¶</a></dt>
 <dd><p>Get training from multiple point clouds in a directory
 Features are calculated on the fly, so expect ~ 8mins per 6.4 million points
 (typically that’s 53 features per point…)</p>
@@ -506,6 +664,19 @@ e.g. for a LiDAR file [‘Intensity’, ‘NumberOfReturns’]</p></li>
 <li><p><em>list of feature names for later ref/plotting</em></p></li>
 </ul>
 </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pointutils.learning.merge_train_points">
+<span class="sig-prename descclassname"><span class="pre">pointutils.learning.</span></span><span class="sig-name descname"><span class="pre">merge_train_points</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">folder</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.learning.merge_train_points" title="Permalink to this definition">¶</a></dt>
+<dd><p>Merge only the labeled points from various tiles to create a new point
+cloud</p>
+<dl class="simple">
+<dt>folder: string</dt><dd><p>the input folder containing .ply files</p>
+</dd>
+<dt>outcld: string</dt><dd><p>the output ply file</p>
 </dd>
 </dl>
 </dd></dl>

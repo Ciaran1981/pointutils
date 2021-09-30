@@ -21,6 +21,8 @@ from glob2 import glob
 import os
 from joblib import Parallel, delayed
 import pandas as pd
+import pdal
+import json
 
 def cgal_features(incld, outcld=None, k=5, rgb=True, parallel=True):
     
@@ -186,6 +188,7 @@ def cgal_features_mem(incld,  k=5, rgb=True, parallel=True):
     features = Feature_set()
     generator = Point_set_feature_generator(points, k)
     
+    #TODO  Not convinced this is actually running more than 1 thread
     if parallel is True:
         features.begin_parallel_additions()
         
@@ -308,7 +311,72 @@ def std_features(incld, outcld=None, k=[50,100,200],
             pcd.to_file(incld)
         else:
             pcd.to_file(outcld)
+            
+def grid_cloud(incld, outfile, attribute="label", reader="readers.ply",
+               writer="writers.gdal", spref="EPSG:21818", dtype="uint16_t",
+               outtype='mean', resolution=0.1):
+    
+    """
+    Grid a pointcloud attribute using pdal
+    
+    Parameters
+    ----------
+    
+    incld: string
+            input cloud
+    
+    outfile: string
+            output cloud
+    
+    attribute: string
+            the pointcloud attribute/dimension to rasterize
+            e.g. label, classification etc
+    
+    reader: string
+            the pdal reader type (see pdal readers)
+    
+    writer: string
+            the pdal reader type (see pdal writers)
+    
+    spref: string
+            spatial ref in ESPG format
+    
+    dtype: string
+            dtype in pdal format (see pdal)
         
+    outtype: string
+            mean, min or max
+            
+    resolution: float
+            in the unit required
+
+    """
+    
+    #json from args
+    js = {
+          "pipeline":[
+            {
+                "type": reader,
+                "filename":incld,
+        	"spatialreference":spref
+            },
+            {
+              "type": writer, 
+              "filename": outfile,
+              "dimension": attribute,
+              "data_type": dtype,
+              "output_type": outtype,
+              "resolution": resolution
+            }
+          ]
+        }  
+    
+    
+    pipeline = pdal.Pipeline(json.dumps(js))
+    count = pipeline.execute()
+    #log = pipeline.log
+    
+
 def _get_featnames(features):
     """
     get the feature names

@@ -25,18 +25,20 @@ from sklearn import preprocessing
 from sklearn import svm
 from osgeo import gdal, ogr#,osr
 import numpy as np
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, GradientBoostingClassifier,RandomForestRegressor, GradientBoostingRegressor
 from sklearn.linear_model import LogisticRegression, SGDClassifier
 import joblib
 from sklearn import metrics
+import sklearn.gaussian_process as gp
 import joblib as jb
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from scipy.stats import randint as sp_randint
 from scipy.stats import expon
 from tpot import TPOTClassifier, TPOTRegressor
 from pyntcloud import PyntCloud
-
+import pandas as pd
+from joblib import Parallel, delayed
 from keras.models import Sequential
 # if still not working try:
 from keras.layers.core import Dense#, Dropout, Flatten, Activation
@@ -52,8 +54,23 @@ from pointutils.props import cgal_features_mem, std_features
 gdal.UseExceptions()
 ogr.UseExceptions()
 
-def create_model_tpot(X_train, outModel, gen=5, popsize=50,  cv=5, cores=-1, dask=False,
-                      regress=False, params=None, scoring=None, verbosity=2):
+from autosklearn.classification import AutoSklearnClassifier
+from psutil import virtual_memory
+import pointutils.handyplots as hp
+import os
+import sys
+from CGAL.CGAL_Kernel import Point_3
+from CGAL.CGAL_Kernel import Vector_3
+from CGAL.CGAL_Point_set_3 import Point_set_3
+from CGAL.CGAL_Classification import *
+
+gdal.UseExceptions()
+ogr.UseExceptions()
+
+def create_model_tpot(X_train, outModel, gen=5, popsize=50,  
+                      cv=5, cores=-1, dask=False, test_size=0.2,
+                      regress=False, params=None, scoring=None, verbosity=2, 
+                      warm_start=False):
     
     """
     Create a model using the tpot library where genetic algorithms
@@ -75,11 +92,11 @@ def create_model_tpot(X_train, outModel, gen=5, popsize=50,  cv=5, cores=-1, das
     cores: int or -1 (default)
             the no of parallel jobs
     
-    strat: bool
-            a stratified grid search
-    
     regress: bool
               a regression model if True, a classifier if False
+    
+    test_size: float
+                size of test set held out
     
     params: a dict of model params (see tpot)
              enter your own params dict rather than the range provided
@@ -97,14 +114,10 @@ def create_model_tpot(X_train, outModel, gen=5, popsize=50,  cv=5, cores=-1, das
     
     scoring: string
               a suitable sklearn scoring type (see notes)
+              
+    warm_start: bool
+                use the previous population, useful if interactive
                            
-    """
-    #t0 = time()
-    
-    print('Preparing data')   
-    
-    """
-    Prep of data for model fitting 
     """
 
     bands = X_train.shape[1]-1
@@ -135,11 +148,16 @@ def create_model_tpot(X_train, outModel, gen=5, popsize=50,  cv=5, cores=-1, das
     # remove labels from X_train
     X_train = X_train[:,1:bands+1]
     
+    #train/test split....
+    X_train, X_test, y_train, y_test = train_test_split(
+            X_train, y_train, test_size=test_size, random_state=0)
+    
+    
     if params is None and regress is False:       
         tpot = TPOTClassifier(generations=gen, population_size=popsize, 
                               verbosity=verbosity,
                               n_jobs=cores, scoring=scoring, use_dask=dask,
-                              warm_start=True, memory='auto')
+                              warm_start=warm_start, memory='auto')
         tpot.fit(X_train, y_train)
         
     elif params != None and regress is False:
@@ -148,14 +166,14 @@ def create_model_tpot(X_train, outModel, gen=5, popsize=50,  cv=5, cores=-1, das
                               scoring=scoring,
                               use_dask=dask, 
                               config_dict=params, 
-                              warm_start=True, memory='auto')
+                              warm_start=warm_start, memory='auto')
         tpot.fit(X_train, y_train)
         
     elif params is None and regress is True:       
         tpot = TPOTRegressor(generations=gen, population_size=popsize, 
                              verbosity=verbosity,
                              n_jobs=cores, scoring=scoring,
-                             use_dask=dask, warm_start=True, memory='auto')
+                             use_dask=dask, warm_start=warm_start, memory='auto')
         tpot.fit(X_train, y_train)
         
     elif params != None and regress is True:
@@ -164,24 +182,180 @@ def create_model_tpot(X_train, outModel, gen=5, popsize=50,  cv=5, cores=-1, das
                              verbosity=verbosity,
                              scoring=scoring,
                              use_dask=dask, 
-                             warm_start=True, memory='auto')
+                             warm_start=warm_start, memory='auto')
         tpot.fit(X_train, y_train)
 
     tpot.export(outModel)
     
+    
+
+#    testresult = grid.best_estimator_.predict(X_test)
+#    
+#    crDf = hp.plot_classif_report(y_test, testresult, save=outModel[:-3]+'.png')
+#    
+#    OR
+#    
+#    tpot.score( X_test, y_test)
+
     #TODO
     # how'd we export the pipline as an object then simply load to predict?
-    
+    # interim is to return the object for now
     #joblib.dump(tpot, 
     
-    return tpot
+    #this'll do for now
+    scr = tpot.score(X_test, y_test)
+    print(scr)
+    
+    return tpot, scr
+
+def create_model_autosk(X_train, outModel,  cores=-1, class_names=None,
+                        incld_est=None,
+                        excld_est=None, incld_prep=None, excld_prep=None, 
+                        total_time=120, res_args={'cv':5},
+                        mem_limit=None,
+                        per_run=None, test_size=0.3, 
+                        wrkfolder=None,
+                        scoring=None, save=True, ply=False):
+    
+    """
+    Auto-sklearn to create a model
+    
+    Parameters
+    ---------------   
+    
+    X_train: np array
+              numpy array of training data where the 1st column is labels
+    
+    outModel: string
+               the output model path which is a gz file, if using keras it is 
+               h5 
+    
+    cores: int or -1 (default)
+            the no of parallel jobs
+    
+    class_names: list of strings
+                class names in order of their numercial equivalents
+    
+    incld_est: list of strings
+                estimators to included eg ['random_forest']
+    
+    excld_est: list of strings
+                estimators to excluded eg ['random_forest']
+    
+    incld_prep: list of strings
+                preproc to include
+                
+    excld_prep: list of strings
+                preproc to include
+    
+    total_time: int
+                time in seconds for the whole search process
+    
+    res_args: dict
+                strategy for overfit avoidance e.g. {'cv':5}
+    
+    mem_limit: int
+                memory limit per job
+    
+    per_run: int
+                time limit per run
+    
+    test_size: float
+            percentage to hold out to test
+    
+    wrkfolder: string
+                path to dir for intermediate working
+    
+    scoring : string
+              a suitable sklearn scoring type (see notes)
+    
+    
+    
+    Returns
+    -------
+    A list of:
+        
+    [model, classif_report]
+    
+    """
+    # default limit set by autosk is low and prone to error, hence estimate
+    # here based on mem + cores used 
+    # (though using everything on offer as limit!)
+    if mem_limit == None:
+        #Work out RAM and divide among threads
+        mem = virtual_memory()
+        #ingb = mem.total / (1024.**3)
+        inmb = mem.total / (1024.**2)
+        mem_limit = inmb / cores
+    
+    
+    bands = X_train.shape[1]-1
+    
+    #X_train = X_train.transpose()
+    if ply == False:
+        
+        X_train = X_train[X_train[:,0] != 0]
+    
+     
+    # Remove non-finite values
+    X_train = X_train[np.isfinite(X_train).all(axis=1)]
+    # y labels
+    y_train = X_train[:,0]
+
+    # remove labels from X_train
+    X_train = X_train[:,1:bands+1]
+
+    # then introduce the test at the end 
+    X_train, X_test, y_train, y_test = train_test_split(
+            X_train, y_train, test_size=test_size, random_state=0)
+    
+    #no_classes = len(np.unique(y_train))
+    
+    # seemingly this must guard the code below (which should then be indented),
+    # though I don't understand this completely
+    #if __name__ == "__main__"
+    
+    automl = AutoSklearnClassifier(time_left_for_this_task=total_time, 
+                                   resampling_strategy_arguments=res_args,
+                                   include_estimators=incld_est, 
+                                   exclude_estimators=excld_est,
+                                   include_preprocessors=incld_prep, 
+                                   exclude_preprocessors=excld_prep,
+                                   per_run_time_limit=per_run, 
+                                   tmp_folder = wrkfolder,
+                                   # per job seemingly
+                                   memory_limit=mem_limit,
+                                   n_jobs=cores)
+    
+    automl.fit(X_train, y_train)
+    
+    testresult = automl.predict(X_test)
+    
+    print(automl.leaderboard())
+    # print results
+    print(automl.sprint_statistics())
+    
+    #for ref
+#    automl.cv_results_
+#    automl.show_models()
+    
+    #save it
+    joblib.dump(automl, outModel)
+    
+    crDf = hp.plot_classif_report(y_test, testresult, target_names=class_names,
+                                  save=outModel[:-3]+'.png')
+    
+    plt_confmat(trueVals, predVals, cmap = plt.cm.gray, fmt="%d")
+
+    return [automl, crDf]
 
     
 
 
 def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
-                 strat=True, regress=False, params = None, scoring=None, 
-                 ply=True, save=True):
+                 strat=True, test_size=0.3, regress=False, params = None,
+                 scoring=None, class_names=None,
+                 ply=False, save=True):
     
     """
     Brute force or random model creating using scikit learn. Either use the
@@ -197,7 +371,7 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
                the output model path which is a gz file, if using keras it is 
                h5 
     
-    clf : string
+    clf: string
           an sklearn or xgb classifier/regressor 
           logit, sgd, linsvc, svc, svm, nusvm, erf, rf, gb, xgb,
           
@@ -218,14 +392,27 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
     strat: bool
             a stratified grid search
     
-    regress : bool
+    test_size: float
+            percentage to hold out to test
+    
+    regress: bool
               a regression model if True, a classifier if False
     
-    params : a dict of model params (see scikit learn)
+    params: a dict of model params (see scikit learn)
              enter your own params dict rather than the range provided
     
-    scoring : string
+    scoring: string
               a suitable sklearn scoring type (see notes)
+    
+    class_names: list of strings
+                class names in order of their numercial equivalents
+    
+    Returns
+    -------
+    A list of:
+        
+    [grid.best_estimator_, grid.cv_results_, grid.best_score_, 
+            grid.best_params_, classification_report)]
     
         
     Notes:
@@ -252,7 +439,7 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
     """
     Prep of data for model fitting 
     """
-
+    
     bands = X_train.shape[1]-1
     
     #X_train = X_train.transpose()
@@ -272,6 +459,10 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
         scoring = 'accuracy'
     elif scoring is None and regress is True:    
         scoring = 'r2'
+    # then introduce the test at the end 
+    X_train, X_test, y_train, y_test = train_test_split(
+            X_train, y_train, test_size=test_size, random_state=0)
+    
     # Choose the classifier type
     # TODO this has become rather messy (understatement)
     # and inefficient - need to make it more 
@@ -336,11 +527,7 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
         # the gpu
         grid = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=1, 
                             cv=kf, verbose=1)
-        grid.fit(X_train, y_train)
-        
-        grid.best_estimator_.model.save(outModel)
-        
-
+                              
         
         
     if clf == 'erf':
@@ -355,9 +542,7 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
                       
         # run randomized search
             grid = RandomizedSearchCV(RF_clf, param_distributions=param_grid,
-                                       n_jobs=-1, n_iter=20,  verbose=2)
-            grid.fit(X_train, y_train)
-            joblib.dump(grid.best_estimator_, outModel) 
+                                       n_jobs=cores, n_iter=20,  verbose=2)
             #print("done in %0.3fs" % (time() - t0))
          else:
             if params is None: 
@@ -379,11 +564,10 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
                                     cv=cv, n_jobs=cores,
                                     scoring=scoring, verbose=2)
                 
-         grid.fit(X_train, y_train)
-         joblib.dump(grid.best_estimator_, outModel) 
+
          
     if clf == 'xgb' and regress is False:
-        xgb_clf = XGBClassifier()
+        xgb_clf = XGBClassifier(use_label_encoder=False)
         if params is None:
                 # This is based on the Tianqi Chen author of xgb
                 # tips for data science as a starter
@@ -415,10 +599,10 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
         grid = GridSearchCV(xgb_clf, param_grid=param_grid, 
                                 cv=StratifiedKFold(cv), n_jobs=cores,
                                 scoring=scoring, verbose=2)
-        grid.fit(X_train, y_train)
-        joblib.dump(grid.best_estimator_, outModel)
-    if clf == 'gb' and regress is False:
 
+        
+    if clf == 'gb' and regress is False:
+        # Key parameter here is max depth
         gb_clf = GradientBoostingClassifier()
         if params is None:
             param_grid ={"n_estimators": [100], 
@@ -428,7 +612,7 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
                          "min_samples_leaf": [5,10,20,30]}
         else:
             param_grid = params
-
+#                       cut due to time
         if strat is True and regress is False:               
             grid = GridSearchCV(gb_clf, param_grid=param_grid, 
                                 cv=StratifiedKFold(cv), n_jobs=cores,
@@ -437,8 +621,6 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
             grid = GridSearchCV(gb_clf, param_grid=param_grid, 
                                 cv=cv, n_jobs=cores,
                                 scoring=scoring, verbose=2)
-        grid.fit(X_train, y_train)
-        joblib.dump(grid.best_estimator_, outModel) 
         
     if clf == 'gb'  and regress is True:
         gb_clf = GradientBoostingRegressor(n_jobs=cores)
@@ -456,28 +638,27 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
                             cv=cv, n_jobs=cores,
                             scoring=scoring, verbose=2)
         
-        grid.fit(X_train, y_train)
-        joblib.dump(grid.best_estimator_, outModel) 
-        
+    #Find best params----------------------------------------------------------
     if clf == 'rf' and regress is False:
          RF_clf = RandomForestClassifier(n_jobs=cores, random_state = 123)
          if random==True:
-            param_grid = {"max_depth": [10, None],
+             if params is None:
+                 param_grid = {"max_depth": [10, None],
                           "n_estimators": [500],
                           "min_samples_split": sp_randint(1, 20),
                           "min_samples_leaf": sp_randint(1, 20),
                           "bootstrap": [True, False],
                           "criterion": ["gini", "entropy"]}
+             else:
+                  param_grid = params
                       
-
-            grid = RandomizedSearchCV(RF_clf, param_distributions=param_grid,
-                                       n_jobs=-1, n_iter=20,  verbose=2)
-            grid.fit(X_train, y_train)
-            joblib.dump(grid.best_estimator_, outModel) 
-
+        # run randomized search
+             grid = RandomizedSearchCV(RF_clf, param_distributions=param_grid,
+                                       n_jobs=cores, n_iter=20,  verbose=2)
+            #print("done in %0.3fs" % (time() - t0))
          else:
             if params is None: 
-
+            #currently simplified for processing speed 
                 param_grid ={"n_estimators": [500],
                              "max_features": ['sqrt', 'log2'],                                                
                              "max_depth": [10, None],
@@ -494,9 +675,6 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
                 grid = GridSearchCV(RF_clf, param_grid=param_grid, 
                                     cv=cv, n_jobs=cores,
                                     scoring=scoring, verbose=2)
-                
-         grid.fit(X_train, y_train)
-         joblib.dump(grid.best_estimator_, outModel) 
          
     if clf == 'rf' and regress is True:
         RF_clf = RandomForestRegressor(n_jobs = cores, random_state = 123)
@@ -513,9 +691,10 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
                             cv=cv, n_jobs=cores,
                             scoring=scoring, verbose=2)
                 
-        grid.fit(X_train, y_train)
-        joblib.dump(grid.best_estimator_, outModel) 
-
+            #print("done in %0.3fs" % (time() - t0))
+    
+    # Random can be quicker and more often than not produces close to
+    # exaustive results
     if clf == 'linsvc' and regress is False:
         X_train = min_max_scaler.fit_transform(X_train)
         svm_clf = svm.LinearSVC()
@@ -538,8 +717,7 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
                  grid = GridSearchCV(svm_clf, param_grid=param_grid, 
                                     cv=cv, n_jobs=cores,
                                     scoring=scoring, verbose=2)
-        grid.fit(X_train, y_train)
-        joblib.dump(grid.best_estimator_, outModel) 
+        
     if clf == 'linsvc' and regress is True:
         svm_clf = svm.LinearSVR()
         if params is None:
@@ -551,8 +729,6 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
         grid = GridSearchCV(svm_clf, param_grid=param_grid, 
                             cv=cv, n_jobs=cores,
                             scoring=scoring, verbose=2)
-        grid.fit(X_train, y_train)
-        joblib.dump(grid.best_estimator_, outModel) 
              #print("done in %0.3fs" % (time() - t0))
     if clf == 'svc': # Far too bloody slow
         X_train = min_max_scaler.fit_transform(X_train)
@@ -567,8 +743,6 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
             #param_grid = [{'kernel':['rbf', 'linear']}]
             grid = GridSearchCV(svm_clf, param_grid=param_grid, cv=cv,
                                 scoring=scoring, verbose=1, n_jobs=cores)
-            grid.fit(X_train, y_train)
-            joblib.dump(grid.best_estimator_, outModel) 
             #print("done in %0.3fs" % (time() - t0))
 
         if params is None:
@@ -586,8 +760,6 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
             grid = GridSearchCV(svm_clf, param_grid=param_grid, 
                                 cv=cv, n_jobs=cores,
                                 scoring=scoring, verbose=2)
-        grid.fit(X_train, y_train)
-        joblib.dump(grid.best_estimator_, outModel) 
              #print("done in %0.3fs" % (time() - t0))
     
     if clf == 'nusvc' and regress is False:
@@ -602,8 +774,6 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
             #param_grid = [{'kernel':['rbf', 'linear']}]
             grid = GridSearchCV(svm_clf, param_grid=param_grid, cv=cv,
                                 scoring=scoring, verbose=1, n_jobs=cores)
-            grid.fit(X_train, y_train)
-            joblib.dump(grid.best_estimator_, outModel) 
             #print("done in %0.3fs" % (time() - t0))
         else:
             if params is None:
@@ -620,17 +790,14 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
              grid = GridSearchCV(svm_clf, param_grid=param_grid, 
                                 cv=cv, n_jobs=cores,
                                 scoring=scoring, verbose=2)
-        grid.fit(X_train, y_train)
-        joblib.dump(grid.best_estimator_, outModel) 
+        
     if clf == 'nusvc' and regress is True:
          svm_clf = svm.NuSVR()
          param_grid = [{'nu':[0.25, 0.5, 0.75, 1],'gamma': [1e-3, 1e-4]}]
          grid = GridSearchCV(svm_clf, param_grid=param_grid, 
                             cv=cv, n_jobs=cores,
                             scoring=scoring, verbose=2)
-         grid.fit(X_train, y_train)
-         joblib.dump(grid.best_estimator_, outModel) 
-
+             #print("done in %0.3fs" % (time() - t0))
     if clf == 'logit':
         logit_clf = LogisticRegression()
         if params is None:
@@ -642,8 +809,6 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
         grid = GridSearchCV(logit_clf, param_grid=param_grid, 
                             cv=cv, n_jobs=cores,
                             scoring=scoring, verbose=2)
-        grid.fit(X_train, y_train)
-        joblib.dump(grid.best_estimator_, outModel) 
         
     if clf == 'sgd':
         logit_clf = SGDClassifier()
@@ -658,10 +823,28 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
         grid = GridSearchCV(logit_clf, param_grid=param_grid, 
                             cv=cv, n_jobs=cores,
                             scoring=scoring, verbose=2)
-        grid.fit(X_train, y_train)
+        
+    grid.fit(X_train, y_train)
+    
+    if clf == 'keras':
+        
+        grid.best_estimator_.model.save(outModel)
+    else:
+    
         joblib.dump(grid.best_estimator_, outModel) 
-
-    return [grid.best_estimator_, grid.cv_results_, grid.best_score_, grid.best_params_]
+    
+    testresult = grid.best_estimator_.predict(X_test)
+    
+    crDf = hp.plot_classif_report(y_test, testresult, target_names=class_names,
+                                  save=outModel[:-3]+'._classif_report.png')
+    
+    confmat = hp.plt_confmat(X_test, y_test, grid.best_estimator_, 
+                             class_names=class_names, 
+                   cmap=plt.cm.Blues, 
+                fmt="%d", save=outModel[:-3]+'_confmat.png')
+    
+    return [grid.best_estimator_, grid.cv_results_, grid.best_score_, 
+            grid.best_params_, crDf, confmat]
 #    print(grid.best_params_)
 #    print(grid.best_estimator_)
 #    print(grid.oob_score_)
@@ -908,6 +1091,7 @@ def get_training_ply(incld, label_field="training", feattype='cgal',
     labels.shape = (labels.shape[0], 1)
     
     # think z may have been no good...
+    # reinstate???
     #featdf['z'] = pcd.points['z'].to_numpy()
     
     if rgb == True:
@@ -916,9 +1100,9 @@ def get_training_ply(incld, label_field="training", feattype='cgal',
         featdf['blue'] = pcd.points['blue'].to_numpy()
     
     if add_fields != None:
-        # could be adding return no, intensity etc if it is LiDAR
+        # could be adding return no, z, intensity etc if it is LiDAR
         for a in add_fields:
-            featdf[a] = pcd.points[a.to_numpy]
+            featdf[a] = pcd.points[a].to_numpy()
         
     X_train = np.hstack((labels, featdf.to_numpy()))
 
@@ -944,7 +1128,7 @@ def get_training_ply(incld, label_field="training", feattype='cgal',
 
 def get_training_tiles(folder, label_field="training",
                      rgb=True, outFile=None, k=5, feattype='cgal',
-                     add_fields=None):
+                     add_fields=None, parallel=False, nt=-1):
     
     """ 
     Get training from multiple point clouds in a directory
@@ -999,13 +1183,25 @@ def get_training_tiles(folder, label_field="training",
     
     trainlist = []
     
-    for f in plylist:
-        
-        train, fnames = get_training_ply(f, label_field=label_field, 
-                     rgb=rgb, outFile=None, k=k, add_fields=add_fields)
+    if parallel == True:
+        trainlist = Parallel(n_jobs=nt, verbose=2)(delayed(get_training_ply)(f,
+                             label_field=label_field, 
+                             rgb=rgb, outFile=None, k=k, 
+                             add_fields=add_fields) for f in plylist)
+        # using * in zip means it does the inverse of what it'd usually be used for
+        trainlist, flist = zip(*trainlist)
+        fnames = flist[0]
+        del flist
     
-        trainlist.append(train)
-        del train
+    else:
+    
+        for f in plylist:
+            
+            train, fnames = get_training_ply(f, label_field=label_field, 
+                         rgb=rgb, outFile=None, k=k, add_fields=add_fields)
+        
+            trainlist.append(train)
+            del train
     
     X_train = np.vstack(trainlist)
     
@@ -1085,7 +1281,7 @@ def classify_ply(incld, inModel, class_field='label',
     if add_fields != None:
         # could be adding return no, intensity etc if it is LiDAR
         for a in add_fields:
-            featdf[a] = pcd.points[a.to_numpy]
+            featdf[a] = pcd.points[a].to_numpy()
            
     X = featdf.to_numpy()
     
@@ -1169,6 +1365,365 @@ def classify_ply_tile(folder, inModel,  class_field='label',
                  rgb=rgb, outcld=None, feattype=feattype, k=k,
                  add_fields=add_fields)
         
+        
+def merge_train_points(folder, outcld):
+    
+    
+    """
+    Merge only the labeled points from various tiles to create a new point 
+    cloud
+    
+    folder: string
+              the input folder containing .ply files
+                
+    outcld: string
+               the output ply file
+    
+    """
+    
+    plylist = glob(os.path.join(folder, '*.ply'))
+    plylist.sort()
+    
+    outlist = []
+    
+    for p in plylist:
+        pcd = PyntCloud.from_file(p)
+        df = pcd.points
+        outlist.append(df[df.training>=0])
+    
+    # take the last pcd at random as the basis to write
+    pcd.points = pd.concat(outlist)
+    pcd.to_file(outcld)
+    
+def extract_train_points(incld, outcld):
+    
+    
+    """
+    Extract only the labeled points and save a new cloud
+    
+    incld: string
+              the input ply
+                
+    outcld: string
+               the output ply file
+    
+    """
+    
+
+    pcd = PyntCloud.from_file(incld)
+    pcd.points = pcd.points[pcd.points.training>=0]
+    
+    # take the last pcd at random as the basis to write
+    pcd.to_file(outcld)   
+
+        
+def create_model_cgal(incld, outModel, classes, k=5, rgb=False, method=None,
+                      normal=False,
+                      outcld=None,  ntrees=25, depth=20):
+    
+    """ 
+    train a point cloud (ply format) with a model generated using CGAL
+    (ETHZ Random forest})
+                
+    This will use the point cloud for evaluation and write the test labels
+    
+    The training must be labeled 'training' in the header 
+                
+    
+    Parameters 
+    ----------- 
+    
+    incld: string
+              the input point cloud
+    
+    outModel: string
+          the input point cloud
+          
+    classes: list of strings
+            the class labels in order
+          
+    k: int or list of ints
+        the number of scales at which to calcualte features
+        if cgal features an int eg 5
+    
+               
+    rgb: bool
+        whether there is rgb data to be included
+    
+    method: string
+            default is None, otherwise smoothing ot graphcut
+    
+    normal: bool
+            whether to include normals as features
+                 
+    outcld: string
+               path to a new ply to write if not writing to the input one
+    
+    ntrees: int
+               the no of trees for the ranndom forest
+               
+    depth: int
+                depth of the random forest
+               
+
+    """ 
+    points = Point_set_3(incld)
+    print(points.size(), "points read")
+    
+    labels = Label_set()
+    
+    # make a list of swig object for later eval
+    labelList = []
+    for c in classes:
+        labelList.append(labels.add(c))
+    
+    print('Calculating features...')
+    features = Feature_set()
+    generator = Point_set_feature_generator(points, k)
+    # 5 is the number of levels (pyramids)
+    
+    # Not convince this is actually operating in parallel
+    features.begin_parallel_additions()
+    generator.generate_point_based_features(features)
+    if normal == True and points.has_normal_map():
+        generator.generate_normal_based_features(features, points.normal_map())
+    
+    if rgb is True:
+        if points.has_int_map("red") and points.has_int_map("green") and points.has_int_map("blue"):
+            generator.generate_color_based_features(features,
+                                                    points.int_map("red"),
+                                                    points.int_map("green"),
+                                                    points.int_map("blue"))
+    features.end_parallel_additions()
+    
+    classification = points.int_map("label")
+    if not classification.is_valid():
+        print("No ground truth found. Exiting.")
+        exit()
+    
+    # Copy classification in training map for later evaluating
+    training = points.add_int_map("training")
+    for idx in points.indices():
+        training.set(idx, classification.get(idx))
+    
+    print("Training random forest classifier...")
+    classifier = ETHZ_Random_forest_classifier(labels, features)
+    
+    classifier.train(points.range(training), num_trees=ntrees, max_depth=depth)
+    
+    print("Saving model...")
+    classifier.save_configuration(outModel)
+    
+    # classification map will be overwritten
+
+    if method == 'graphcut':
+        print("Classifying with graphcut...")
+        classify_with_graphcut(points, labels, classifier,
+                               generator.neighborhood().k_neighbor_query(6),
+                               0.5,  # strength of graphcut
+                               12,   # nb subdivisions (speed up)
+                               classification)
+    elif method == "smoothing":
+        print("Classifying with local smoothing...")
+        classify_with_local_smoothing(points, labels, classifier,
+                                      generator.neighborhood().k_neighbor_query(6),
+                                      classification)
+    else:
+        print("Classifying with standard algo")
+        classify(points, labels, classifier, classification)
+
+    if outcld == None:
+        outcld = incld
+    points.write(outcld)
+    
+    print("Evaluation:")
+    evaluation = Evaluation(labels, points.range(training), points.range(classification))
+
+    print(" * Accuracy =", evaluation.accuracy())
+    print(" * Mean F1 score =", evaluation.mean_f1_score())
+    print(" * Mean IoU =", evaluation.mean_intersection_over_union())
+    
+    print("Per label evaluation:")
+    
+    for label in labelList:
+        print(" *", label.name(), ": precision =", evaluation.precision(label),
+              " recall =", evaluation.recall(label),
+              " iou =", evaluation.intersection_over_union(label))
+    
+    #TODO return the classif summary
+    return 
+        
+        
+
+def classify_cgal(incld, inModel, classes, k=5, rgb=False, method=None, 
+                  normal=False, outcld=None):
+    
+    """ 
+    classify a point cloud (ply format) with a model generated using CGAL
+    (ETHZ Random forest})
+                
+    An evaluation will be printed
+    
+    
+    Parameters 
+    ----------- 
+    
+    incld: string
+              the input point cloud
+    
+    outModel: string
+          the input point cloud
+          
+    classes: list of strings
+            the class labels in order
+          
+    k: int or list of ints
+        the number of scales at which to calcualte features
+        if cgal features an int eg 5
+    
+               
+    rgb: bool
+        whether there is rgb data to be included
+    
+    method: string
+            default is None, otherwise smoothing ot graphcut
+    
+    normal: bool
+            whether to include normals as features
+                 
+    outcld: string
+               path to a new ply to write if not writing to the input one
+    
+               
+
+    """  
+    
+    
+    points = Point_set_3(incld)
+    print(points.size(), "points read")
+    
+    labels = Label_set()
+    
+    # make a list of swig object for later eval
+    labelList = []
+    for c in classes:
+        labelList.append(labels.add(c))
+    
+    features = Feature_set()
+    generator = Point_set_feature_generator(points, k)
+    # 5 is the number of levels (pyramids)
+    
+    print('generating features...')
+    features.begin_parallel_additions()
+    generator.generate_point_based_features(features)
+    if normal == True and points.has_normal_map():
+        generator.generate_normal_based_features(features, points.normal_map())
+    
+    if rgb is True:
+        if points.has_int_map("red") and points.has_int_map("green") and points.has_int_map("blue"):
+            generator.generate_color_based_features(features,
+                                                    points.int_map("red"),
+                                                    points.int_map("green"),
+                                                    points.int_map("blue"))
+    features.end_parallel_additions()
+
+    
+    classification = points.add_int_map("label")
+    
+    classifier = ETHZ_Random_forest_classifier(labels, features)
+    
+    classifier.load_configuration(inModel)
+    
+    # classification map will be overwritten
+
+    if method == 'graphcut':
+        print("Classifying with graphcut...")
+        classify_with_graphcut(points, labels, classifier,
+                               generator.neighborhood().k_neighbor_query(6),
+                               0.5,  # strength of graphcut
+                               12,   # nb subdivisions (speed up)
+                               classification)
+    elif method == "smoothing":
+        print("Classifying with local smoothing...")
+        classify_with_local_smoothing(points, labels, classifier,
+                                      generator.neighborhood().k_neighbor_query(6),
+                                      classification)
+    else:
+        print("Classifying with standard algo")
+        classify(points, labels, classifier, classification)
+    
+    
+    print("Saving")
+    
+    if outcld == None:
+        outcld = incld
+    points.write(outcld)
+
+def fix_cgal_classes(incld, clsdict, outcld=None):
+    
+    """
+    Fix cgal classes wrongly relabelled* from the ply header
+    
+    *This can happen if you reopen a previously labelled file and add to it
+    
+    incld: string
+           input ply
+           
+    clsdict: dict
+            dict of correct correspondence {'tree': 1, 'building': 2}
+            
+    outcld: string
+           optional output ply, otherwise save to input
+    """
+    
+    
+    pcd = PyntCloud.from_file(incld)
+    #pcd.points.training.unique()
+    #pcd.comments # gives header with training info
+    
+    # if using cgal, the class names are recorded in the header, by going from
+    # index 2 we include unclassified, which is required
+    potlabels = pcd.comments[2:]
+    #we want the third word in each....assume this is always the case
+    labels = [p.split()[2] for p in potlabels]
+    # we also want a dict
+    ints = [int(p.split()[1]) for p in potlabels]
+    
+    # make a dict to get a column of class names
+    middict = dict(zip(ints, labels))
+    
+    pcd.points['trnname'] = pcd.points['training'].map(middict)
+    # eg for the final conversion
+    # clsnms = {'unclassified': -1 , 'FRJ': 0, 'BOF': 1, 'MAT': 2,
+    #          'SHH': 3, 'ROC': 4, 'SHR': 5, 'AGU': 6}
+    
+    # and finally convert the training labels back
+    pcd.points['training'] = pcd.points['trnname'].map(clsdict)
+    
+    #TODO  change the header comments??
+    #pcd.points.drop(columns='trnname', inplace=True)
+    
+    if outcld == None:
+        outcld = incld
+    # BUG with Pyntcld screws up extent etc
+    #pcd.to_file(outcld)
+    
+    # an array from which to write
+    arr = pcd.points.training.to_numpy()
+    
+    del pcd
+    
+    points = Point_set_3(incld)
+    
+    clsmap = points.add_int_map('training')
+    
+    # TODO this is not ideal looping in python
+    for i, p in enumerate(points.indices()):
+        clsmap.set(p, int(arr[i]))
+    
+    points.write(outcld)
+    
+    
 
 def rmse_vector_lyr(inShape, attributes):
 
@@ -1207,6 +1762,7 @@ def rmse_vector_lyr(inShape, attributes):
     error = np.sqrt(metrics.mean_squared_error(true, pred))
     
     return error
+
 
 
 

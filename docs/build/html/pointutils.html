@@ -269,6 +269,78 @@ e.g. label, classification etc</p></li>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="pointutils.props.grid_cloud_tile">
+<span class="sig-prename descclassname"><span class="pre">pointutils.props.</span></span><span class="sig-name descname"><span class="pre">grid_cloud_tile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">folder</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attribute</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'label'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reader</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'readers.ply'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">writer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'writers.gdal'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spref</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'EPSG:21818'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'uint16_t'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'mean'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">resolution</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.grid_cloud_tile" title="Permalink to this definition">¶</a></dt>
+<dd><p>Grid pointclouds attribute using pdal</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>folder</strong> (<em>string</em>) – input folder containing plys</p></li>
+<li><p><strong>attribute</strong> (<em>string</em>) – the pointcloud attribute/dimension to rasterize
+e.g. label, classification etc</p></li>
+<li><p><strong>reader</strong> (<em>string</em>) – the pdal reader type (see pdal readers)</p></li>
+<li><p><strong>writer</strong> (<em>string</em>) – the pdal reader type (see pdal writers)</p></li>
+<li><p><strong>spref</strong> (<em>string</em>) – spatial ref in ESPG format</p></li>
+<li><p><strong>dtype</strong> (<em>string</em>) – dtype in pdal format (see pdal)</p></li>
+<li><p><strong>outtype</strong> (<em>string</em>) – mean, min or max</p></li>
+<li><p><strong>resolution</strong> (<em>float</em>) – in the unit required</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pointutils.props.pdal_ground">
+<span class="sig-prename descclassname"><span class="pre">pointutils.props.</span></span><span class="sig-name descname"><span class="pre">pdal_ground</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">smrf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scalar</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">slope</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.15</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">window</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">18</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clsrange</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'[1:2]'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.pdal_ground" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>incld</strong> (<em>string</em>) – input cloud</p></li>
+<li><p><strong>outcld</strong> (<em>string</em>) – output cloud (if none), results written to input</p></li>
+<li><p><strong>smrf</strong> (<em>int</em>) – From the Pingel (2013) paper tests - helpful perhaps but no
+guarantees of ‘good’ results!
+Choice of:
+1 = Mixed vegetation and buildings on hillside,
+2 = Mixed vegetation and buildings,
+3 = Road with bridge,
+4 = Bridge and irregular ground surface,
+5 = Large, irregularly shaped buildings,
+6 = Steep slopes with vegetation,
+7 = Complex building,
+8 = Large gaps in data, irregularly shaped buildings,
+9 = Trains in railway yard,
+10 = Data gaps, vegetation on moderate slopes,
+11 = Steep, terraced slopes1
+12 = Steep, terraced slopes2
+13 = Dense ground cover
+14 = Large gap in data
+15 = Underpass</p></li>
+<li><p><strong>scalar</strong> (<em>float</em>) – scaling factor (def 1.25)</p></li>
+<li><p><strong>slope</strong> (<em>float</em>) – slope thresh (def 0.15)</p></li>
+<li><p><strong>threshold</strong> (<em>float</em>) – elevation threshold (def 0.5)</p></li>
+<li><p><strong>window</strong> (<em>int</em>) – max window size  (def 18)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pointutils.props.smrf_params">
+<span class="sig-prename descclassname"><span class="pre">pointutils.props.</span></span><span class="sig-name descname"><span class="pre">smrf_params</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.smrf_params" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>None</strong></p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p></p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>Dataframe of the parameters from the Pingle2013 paper</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="pointutils.props.std_features">
 <span class="sig-prename descclassname"><span class="pre">pointutils.props.</span></span><span class="sig-name descname"><span class="pre">std_features</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">incld</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outcld</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[50,</span> <span class="pre">100,</span> <span class="pre">200]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">props</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['anisotropy',</span> <span class="pre">'curvature',</span> <span class="pre">'eigenentropy',</span> <span class="pre">'eigen_sum',</span> <span class="pre">'linearity',</span> <span class="pre">'omnivariance',</span> <span class="pre">'planarity',</span> <span class="pre">'sphericity']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nrm_props</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tofile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.std_features" title="Permalink to this definition">¶</a></dt>
 <dd><p>Calculate point cloud features and write to file, over a range of k-scales</p>
@@ -285,6 +357,19 @@ multiple is more effective</p></li>
 <li><p><strong>nrm_props</strong> (<em>list</em>) – properties based on normals if the exist (this will fail if they don’t)
 e.g. [“inclination_radians”,  “orientation_radians”]</p></li>
 <li><p><strong>tofile</strong> (<em>bool</em>) – if true write to pointcloud if false return a df of the features</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pointutils.props.write_vrt">
+<span class="sig-prename descclassname"><span class="pre">pointutils.props.</span></span><span class="sig-name descname"><span class="pre">write_vrt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">infiles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outfile</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pointutils.props.write_vrt" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>infiles</strong> (<em>list of strings</em>) – the input files</p></li>
+<li><p><strong>outfile</strong> (<em>string</em>) – the output .vrt</p></li>
 </ul>
 </dd>
 </dl>

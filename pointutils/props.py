@@ -23,6 +23,7 @@ from joblib import Parallel, delayed
 import pandas as pd
 import pdal
 import json
+from osgeo import gdal
 
 def cgal_features(incld, outcld=None, k=5, rgb=True, parallel=True):
     
@@ -376,6 +377,134 @@ def grid_cloud(incld, outfile, attribute="label", reader="readers.ply",
     count = pipeline.execute()
     #log = pipeline.log
     
+def grid_cloud_tile(folder, attribute="label", reader="readers.ply", 
+                    writer="writers.gdal", spref="EPSG:21818", 
+                    dtype="uint16_t", outtype='mean', resolution=0.1, nt=-1):
+    
+    """
+    Grid pointclouds attribute using pdal
+    
+    Parameters
+    ----------
+    
+    folder: string
+            input folder containing plys
+    
+    attribute: string
+            the pointcloud attribute/dimension to rasterize
+            e.g. label, classification etc
+    
+    reader: string
+            the pdal reader type (see pdal readers)
+    
+    writer: string
+            the pdal reader type (see pdal writers)
+    
+    spref: string
+            spatial ref in ESPG format
+    
+    dtype: string
+            dtype in pdal format (see pdal)
+        
+    outtype: string
+            mean, min or max
+            
+    resolution: float
+            in the unit required
+
+    """
+    
+    
+    plylist = glob(os.path.join(folder, '*.ply'))
+    plylist.sort()
+
+    outlist = [ply[:-3]+'tif' for ply in plylist]
+        
+        
+    Parallel(n_jobs=nt, verbose=2)(delayed(grid_cloud)(ply, out, attribute,
+             reader, writer, spref, dtype,
+             outtype, resolution) for ply, out in zip(plylist, outlist))
+
+
+
+def pdal_ground(incld, smrf=None, scalar=1.25, slope=0.15, threshold=0.5, 
+               window=18, clsrange="[1:2]", outcld=None):
+    """
+    Parameters
+    ----------
+    
+    incld: string
+            input cloud
+    
+    outcld: string
+            output cloud (if none), results written to input
+    
+    smrf: int 
+                From the Pingel (2013) paper tests - helpful perhaps but no
+                guarantees of 'good' results!
+                Choice of: 
+                1 = Mixed vegetation and buildings on hillside,
+                2 = Mixed vegetation and buildings,
+                3 = Road with bridge,
+                4 = Bridge and irregular ground surface,
+                5 = Large, irregularly shaped buildings,
+                6 = Steep slopes with vegetation,
+                7 = Complex building,
+                8 = Large gaps in data, irregularly shaped buildings,
+                9 = Trains in railway yard,
+                10 = Data gaps, vegetation on moderate slopes,
+                11 = Steep, terraced slopes1
+                12 = Steep, terraced slopes2
+                13 = Dense ground cover
+                14 = Large gap in data
+                15 = Underpass
+                    
+    scalar: float
+            scaling factor (def 1.25)
+    
+    slope: float
+            slope thresh (def 0.15)
+    
+    threshold: float
+            elevation threshold (def 0.5)
+
+    window: int
+            max window size  (def 18)
+    """
+    
+    # the test results from the paper
+
+    if outcld == None:
+        outcld = incld
+    if smrf_params != None:
+        sms = smrf_params()
+        row = sms.iloc[smrf]
+        print('Parametrs are:\n', row[2:6])
+        params = row[2:6].to_dict()
+        params["type"] ="filters.smrf"
+
+    else:
+         params = {
+            "type":"filters.smrf",
+            "scalar":scalar,
+            "slope":slope,
+            "threshold":threshold,
+            "window":window
+        }
+        
+    js = [
+        incld,
+        params,
+        {
+            "type":"filters.range",
+            "limits":"Classification"+clsrange
+        },
+        outcld
+    ]
+    
+    pipeline = pdal.Pipeline(json.dumps(js))
+    pipeline.execute()
+
 
 def _get_featnames(features):
     """
@@ -433,9 +562,134 @@ def _cgalfeat(cnt, features, name, ftr):
     return flist  #np.asarray(flist)
     
     
+def write_vrt(infiles, outfile):
+    
+    """
+    Parameters
+    ----------
+    
+    infiles: list of strings
+                the input files
+    
+    outfile: string
+                the output .vrt
+
+    """
     
     
+    virtpath = outfile
+    outvirt = gdal.BuildVRT(virtpath, infiles)
+    outvirt.FlushCache()
+    outvirt=None   
+    
+# TODO this needs replaced
+def smrf_params():
+    
+    """
+    Parameters
+    ----------
+    None
+    
+    Returns
+    -------
+    
+    Dataframe of the parameters from the Pingle2013 paper
+    
+    """
     
     
-    
+    params = {'Sample': {0: '1-1',
+              1: '1-2',
+              2: '2-1',
+              3: '2-2',
+              4: '2-3',
+              5: '2-4',
+              6: '3-1',
+              7: '4-1',
+              8: '4-2',
+              9: '5-1',
+              10: '5-2',
+              11: '5-3',
+              12: '5-4',
+              13: '6-1',
+              14: '7-1'},
+             'Features': {0: 'Mixed vegetation and buildings on hillside',
+              1: 'Mixed vegetation and buildings',
+              2: 'Road with bridge',
+              3: 'Bridge and irregular ground surface',
+              4: 'Large, irregularly shaped buildings',
+              5: 'Steep slopes with vegetation',
+              6: 'Complex building',
+              7: 'Large gaps in data, irregularly shaped buildings',
+              8: 'Trains in railway yard',
+              9: 'Data gaps, vegetation on moderate slopes',
+              10: 'Steep, terraced slopes',
+              11: 'Steep, terraced slopes',
+              12: 'Dense ground cover',
+              13: 'Large gap in data',
+              14: 'Underpass'},
+             'slope': {0: 0.2,
+              1: 0.18,
+              2: 0.12,
+              3: 0.16,
+              4: 0.27,
+              5: 0.16,
+              6: 0.08,
+              7: 0.22,
+              8: 0.06,
+              9: 0.05,
+              10: 0.13,
+              11: 0.45,
+              12: 0.05,
+              13: 0.28,
+              14: 0.13},
+             'window': {0: 16,
+              1: 12,
+              2: 20,
+              3: 18,
+              4: 13,
+              5: 8,
+              6: 15,
+              7: 16,
+              8: 49,
+              9: 17,
+              10: 13,
+              11: 3,
+              12: 11,
+              13: 5,
+              14: 15},
+             'threshold': {0: 0.45,
+              1: 0.3,
+              2: 0.6,
+              3: 0.35,
+              4: 0.5,
+              5: 0.2,
+              6: 0.25,
+              7: 1.1,
+              8: 1.05,
+              9: 0.35,
+              10: 0.25,
+              11: 0.1,
+              12: 0.15,
+              13: 0.5,
+              14: 0.75},
+             'scalar': {0: 1.2,
+              1: 0.95,
+              2: 0.0,
+              3: 1.3,
+              4: 0.9,
+              5: 2.05,
+              6: 1.5,
+              7: 0.0,
+              8: 0.0,
+              9: 0.9,
+              10: 2.2,
+              11: 3.8,
+              12: 2.3,
+              13: 1.45,
+              14: 0.0}}
+    df = pd.DataFrame(params)
+    # error pdal doesn't like int64 for serialise...
+    df['window'] = df['window'].astype(float)
+    return df
     

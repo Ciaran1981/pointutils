@@ -15,6 +15,7 @@ dependencies:
   - jupyter
   - matplotlib
   - gdal
+  - geopandas
   - scikit-image
   - scikit-learn
   - cgal

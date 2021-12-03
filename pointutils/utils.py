@@ -28,9 +28,206 @@ import geopandas as gpd
 import pdal
 import json
 from osgeo import gdal, ogr
+from shapely.wkt import loads
+from shapely.geometry import Polygon, LineString
+from subprocess import call
+# Notes on pdal pipelines
+# To access the internals/outputs
+#count = pipeline.execute()
+#arrays = pipeline.arrays
+#metadata = pipeline.metadata
+#log = pipeline.log
+
+def clip_cloud_with_cloud(incld, outcld):
+    
+    """
+    Clip a pointcloud with the approx boundary of another
+    
+    Must be same projecttion
+    
+    Parameters
+    ----------
+    
+    incld: string
+            input cloud
+            
+    outcld: string
+            output cloud    
+    
+    """
+    poly = cloud_poly(incld, outshp=None)
+    
+    js = {"pipeline": [
+    incld,
+    {
+        "type":"filters.crop",
+        "polygon": poly.wkt
+    },
+    {
+        "type":"writers.las",
+        "filename":outcld
+    }
+    ]}
+
+    pipeline = pdal.Pipeline(json.dumps(js))
+    pipeline.execute()
+    
+    
+    
+
+def reproject_cloud(incld, outcld, inproj="ESPG:4326", outproj="ESPG:32630"):
+    
+    """
+    Reproject a cloud
+    
+    Parameters
+    ----------
+    
+    incld: string
+            input cloud
+    """
+     
+    
+    js = [
+        {
+            "filename": incld,
+#            "type":"readers.las",
+#            "spatialreference":"EPSG:26916"
+        },
+        {
+            "type":"filters.reprojection",
+            "in_srs": inproj,
+            "out_srs": outproj,
+        },
+        {
+            "type":"writers.las",
+            "filename":outcld
+        }
+    ]
+
+    pipeline = pdal.Pipeline(json.dumps(js))
+    count = pipeline.execute()
+    
+    
+def merge_cloud(inclds, outcld, reader="readers.laz"):
+    
+    """
+    Merge some las/laz files via pdal
+    
+    Parameters
+    ----------
+    
+    inclds: list
+            list of input clouds
+            
+    outshp: string
+            output file (.las/laz)
+    
+    """
+    
+    # must copy otherwise we end up with a load of pointing
+    js = inclds.copy()
+    # it wont accpet the list directly....
+    # ...just append the pipeline to the end of it -handy
+    
+    js.append({"type": "filters.merge"
+    })
+    js.append(outcld)
+    
+    pipeline = pdal.Pipeline(json.dumps(js))
+    
+    count = pipeline.execute()
+    
+
+def cloud_poly(incld, outshp=None):
+    
+    """
+    Return the non-zero extend as a shapely polygon
+    
+    Parameters
+    ----------
+    
+    incld: string
+            input cloud
+            
+    outshp: string
+            optional output file
+    
+    Returns
+    
+    Shapely polygon
+    
+    """
+    
+    js = [incld, 
+          {"type" : "filters.hexbin"}]
+    
+    pipeline = pdal.Pipeline(json.dumps(js))
+    
+    count = pipeline.execute()
+    
+    # get the json 
+    meta = pipeline.get_metadata()
+    metajson = json.loads(meta)
+    
+    # in json is the polygon required
+    boundarywkt = metajson['metadata']['filters.hexbin']['boundary']
+    poly = loads(boundarywkt)
+    
+    return poly
+
+def intersect_clip(incld, inshp, outcld, column, index):
+    
+    """
+    Clip a pointcloud with a polygon if it intersects the polygon
+    
+    Must be same projecttion
+    
+    Parameters
+    ----------
+    
+    incld: string
+            input cloud
+            
+    inshp: string
+            optional output file
+            
+    outcld: string
+            output cloud    
+            
+    column: string
+            the shape column/attribute
+    
+    index: int/string/float
+            the row to filter by
+    
+    outcld: string
+            input cloud
+    
+    """
+    
+    cldpoly = cloud_poly(incld)
+    
+    gdf = gpd.read_file(inshp)
+    
+    row = gdf[gdf[column]==index]
+    
+    # if there is more than one, merge them
+    if len(row) > 0:
+         row = row.dissolve(by=column)
+    # for shapely
+    wkt = row.geometry.to_wkt()
+    inwkt = wkt.iloc[0]
+    
+    poly = loads(inwkt)
+    
+    if cldpoly.intersects(poly) == True:
+        clip_cloud(incld, inshp, outcld, column, index)
+    else:
+        print("pointcloud does not intersect polygon")
 
     
-def clip_cloud(incld, inshp, outcld, column, index, polyrng="[32670:32670]"):
+def clip_cloud(incld, inshp, outcld, column, index):
 
     """
     Clip a pointcloud using pdal specifying the attribute and feature number
@@ -50,6 +247,9 @@ def clip_cloud(incld, inshp, outcld, column, index, polyrng="[32670:32670]"):
 
     column: string
                 the shape column/attribute
+    
+    index: int/string/float
+            the row to filter by
     
     """
 
@@ -769,3 +969,58 @@ def smrf_params():
     # error pdal doesn't like int64 for serialise...
     df['window'] = df['window'].astype(float)
     return df
+
+#def cldcompare_merge(folder):
+#    
+#    """
+#    Merge ply clouds using cloud compare command line via subprocess
+#    
+#    Paramaters
+#    ----------
+#    
+#    folder: string
+#            the input directory
+#            
+#    """
+#    
+#    filelist = glob(os.path.join(folder, "*.ply"))
+#    filelist.sort()
+#    
+#    # There should be a better way in bash, though it may be the cc cmd line 
+#    # also
+#    inp = "-o "
+#    shft = " -GLOBAL_SHIFT AUTO"
+#    
+#    cmd = []
+#    
+#    for f in filelist:
+#        cmd.append(inp)
+#        cmd.append(f)
+#        cmd.append(shft)
+#    # here sorting will not work - leave unordered
+#    #cloudcompare.CloudCompare -SILENT -NO_TIMESTAMP -C_EXPORT_FMT PLY ${files} -MERGE_CLOUDS
+#    cmd.insert(0, "cloudcompare.CloudCompare")
+#    cmd.insert(1,"-SILENT")
+#    cmd.insert(2,"-NO_TIMESTAMP")
+#    #cmd.insert(3,"-C_EXPORT_FMT PLY")
+#    cmd.append("-MERGE_CLOUDS")
+#    #cmd.append("-SAVE_MESHES ALL_AT_ONCE")
+#    call(cmd)
+#    #log = open(os.path.join(folder, 'log.txt'), "w")
+#    #ret = call(cmd, log)
+#    
+#    if ret !=0:
+#        print('A micmac error has occured - check the log file')
+#        sys.exit()
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+

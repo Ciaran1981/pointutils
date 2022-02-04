@@ -27,10 +27,15 @@ import pandas as pd
 import geopandas as gpd
 import pdal
 import json
-from osgeo import gdal, ogr
+from osgeo import gdal, ogr, osr
 from shapely.wkt import loads
 from shapely.geometry import Polygon, LineString
 from subprocess import call
+
+gdal.UseExceptions()
+ogr.UseExceptions()
+
+
 # Notes on pdal pipelines
 # To access the internals/outputs
 #count = pipeline.execute()
@@ -38,7 +43,7 @@ from subprocess import call
 #metadata = pipeline.metadata
 #log = pipeline.log
 
-def clip_cloud_with_cloud(incld, outcld):
+def clip_cloud_with_cloud(mskcld, incld, outcld, writer='las'):
     
     """
     Clip a pointcloud with the approx boundary of another
@@ -52,10 +57,14 @@ def clip_cloud_with_cloud(incld, outcld):
             input cloud
             
     outcld: string
-            output cloud    
+            output cloud
+    
+    writer: string
+            writer type (las, laz, ply, ept)
     
     """
-    poly = cloud_poly(incld, outshp=None)
+    poly = cloud_poly(mskcld, outshp=None)
+    
     
     js = {"pipeline": [
     incld,
@@ -64,10 +73,13 @@ def clip_cloud_with_cloud(incld, outcld):
         "polygon": poly.wkt
     },
     {
-        "type":"writers.las",
-        "filename":outcld
+     "type":"writers."+writer,
+     "filename":outcld
     }
     ]}
+    
+    if writer == 'ply':
+        js[2]["precision"] = "6f"
 
     pipeline = pdal.Pipeline(json.dumps(js))
     pipeline.execute()
@@ -75,7 +87,8 @@ def clip_cloud_with_cloud(incld, outcld):
     
     
 
-def reproject_cloud(incld, outcld, inproj="ESPG:4326", outproj="ESPG:32630"):
+def reproject_cloud(incld, outcld, inproj="ESPG:4326", outproj="ESPG:32630", 
+                    reader='las', writer='las'):
     
     """
     Reproject a cloud
@@ -85,14 +98,29 @@ def reproject_cloud(incld, outcld, inproj="ESPG:4326", outproj="ESPG:32630"):
     
     incld: string
             input cloud
+    
+    outcld: string
+            output cloud
+    
+    inproj: string
+            e.g. in form ESPG:4326 or proj4 if that doesn't work
+    
+    outproj: string
+            e.g. in form ESPG:4326 or proj4 if that doesn't work
+            
+    reader: string
+            reader type (las, laz, ply, ept)
+    
+    writer: string
+            writer type (las, laz, ply, ept)
     """
      
     
     js = [
         {
             "filename": incld,
-#            "type":"readers.las",
-#            "spatialreference":"EPSG:26916"
+            "type":"readers."+reader,
+ #           "spatialreference": inproj,
         },
         {
             "type":"filters.reprojection",
@@ -100,16 +128,18 @@ def reproject_cloud(incld, outcld, inproj="ESPG:4326", outproj="ESPG:32630"):
             "out_srs": outproj,
         },
         {
-            "type":"writers.las",
+            "type":"writers."+writer,
             "filename":outcld
         }
     ]
+    if writer == 'ply':
+        js[2]["precision"] = "6f"
 
     pipeline = pdal.Pipeline(json.dumps(js))
     count = pipeline.execute()
     
     
-def merge_cloud(inclds, outcld, reader="readers.laz"):
+def merge_cloud(inclds, outcld, reader="readers.ply", writer="ply"):
     
     """
     Merge some las/laz files via pdal
@@ -117,32 +147,54 @@ def merge_cloud(inclds, outcld, reader="readers.laz"):
     Parameters
     ----------
     
-    inclds: list
-            list of input clouds
+    inclds: list or filepath
+            list of input clouds or string to dir
             
     outshp: string
             output file (.las/laz)
     
+    reader: string
+            reader type (las, laz, ply, ept)
+    
+    writer: string
+            writer type (las, laz, ply, ept)
+    
     """
     
     # must copy otherwise we end up with a load of pointing
+    
+    outwrite = "writers."+writer
+    
+    if type(inclds) is str:
+        print('input is a directory')
+        # assume a path
+        # get the filetype from reader arg
+        key = "*" + os.path.splitext(reader)[1] 
+        inclds = glob(os.path.join(inclds, key))
+        inclds.sort()
+    
     js = inclds.copy()
     # it wont accpet the list directly....
     # ...just append the pipeline to the end of it -handy
     
     js.append({"type": "filters.merge"
-    })
-    js.append(outcld)
+               })
+    #precision is still an issue with some files 
+    js.append({
+            "type": outwrite,
+            "precision": "6f", 
+            "filename": outcld
+            })
     
     pipeline = pdal.Pipeline(json.dumps(js))
     
     count = pipeline.execute()
     
 
-def cloud_poly(incld, outshp=None):
+def cloud_poly(incld, outshp=None, polytype="ESRI Shapefile"):
     
     """
-    Return the non-zero extend as a shapely polygon
+    Return the non-zero extent as a shapely polygon
     
     Parameters
     ----------
@@ -151,14 +203,19 @@ def cloud_poly(incld, outshp=None):
             input cloud
             
     outshp: string
-            optional output file
+            output file (optional)
+    
+    polytype: string
+            the ogr term for the output polygon e.g. "ESRI Shapefile" (optional)
     
     Returns
+    -------
     
     Shapely polygon
     
     """
-    
+
+
     js = [incld, 
           {"type" : "filters.hexbin"}]
     
@@ -167,14 +224,101 @@ def cloud_poly(incld, outshp=None):
     count = pipeline.execute()
     
     # get the json 
-    meta = pipeline.get_metadata()
+    meta = pipeline.metadata
     metajson = json.loads(meta)
     
     # in json is the polygon required
     boundarywkt = metajson['metadata']['filters.hexbin']['boundary']
     poly = loads(boundarywkt)
     
+    if outshp != None:
+        # this is a wkt
+        spref = metajson['metadata']['readers.las']['spatialreference']
+        
+        proj = osr.SpatialReference()
+        proj.ImportFromWkt(spref)
+        
+        out_drv = ogr.GetDriverByName(polytype)
+        
+        # remove output shapefile if it already exists
+        if os.path.exists(outshp):
+            out_drv.DeleteDataSource(outshp)
+        
+        # create the output shapefile
+        ootds = out_drv.CreateDataSource(outshp)
+        ootlyr = ootds.CreateLayer("extent", proj, geom_type=ogr.wkbPolygon)
+        
+        # add an ID field
+        idField = ogr.FieldDefn("id", ogr.OFTInteger)
+        ootlyr.CreateField(idField)
+        
+        # create the feature and set values
+        featureDefn = ootlyr.GetLayerDefn()
+        feature = ogr.Feature(featureDefn)
+        # from shapely wkt export to ogr
+        polyogr = ogr.CreateGeometryFromWkt(poly.wkt)
+        feature.SetGeometry(polyogr)
+        feature.SetField("id", 1)
+        ootlyr.CreateFeature(feature)
+        feature = None
+        
+        # Save and close 
+        ootds.FlushCache()
+        ootds = None
+    
     return poly
+
+#TODO
+def create_ogr_poly(outfile, spref, file_type="ESRI Shapefile", field="id", 
+                     field_dtype=0):
+    """
+    Create an ogr dataset and layer (convenience)
+    
+    Parameters
+    ----------
+    
+    outfile: string
+                path to ogr file 
+    
+    spref: wkt or int
+        spatial reference either a wkt or espg
+    
+    file_type: string
+                ogr file designation
+        
+    field: string
+            attribute field e.g. "id"
+    
+    field_type: int or ogr.OFT.....
+            ogr dtype of field e.g. 0 == ogr.OFTInteger
+        
+             
+    """   
+    proj = osr.SpatialReference()
+    #TODO if int assume espg - crude there will be a better way
+    if spref is int:
+        proj.ImportFromEPSG(spref)
+    else:
+        proj.ImportFromWkt(spref)
+        
+    out_drv = ogr.GetDriverByName(file_type)
+    
+    # remove output shapefile if it already exists
+    if os.path.exists(outfile):
+        out_drv.DeleteDataSource(outfile)
+    
+    # create the output shapefile
+    ootds = out_drv.CreateDataSource(outfile)
+    ootlyr = ootds.CreateLayer("extent", proj, geom_type=ogr.wkbPolygon)
+    
+    # add the fields
+    # ogr.OFTInteger == 0, hence the arg
+    idField = ogr.FieldDefn("id", ogr.OFTInteger)
+    ootlyr.CreateField(idField)
+    
+    return ootds, ootlyr
+    
+    
 
 def intersect_clip(incld, inshp, outcld, column, index):
     
@@ -226,8 +370,52 @@ def intersect_clip(incld, inshp, outcld, column, index):
     else:
         print("pointcloud does not intersect polygon")
 
+def atrribute_cloud(incld, inshp, shpcol, cldcol="Classification"):
     
-def clip_cloud(incld, inshp, outcld, column, index):
+    """
+    Add the attribute of a shapefile polygon to the points it contains
+    Must be on an existing column.
+    
+    Parameters
+    ----------
+    
+    incld: string
+            input cloud
+            
+    inshp: string
+            optional output file
+            
+    outcld: string
+            output cloud    
+            
+    shpcol: string
+            the shape column/attribute
+    
+    cldcol: string
+            the shape column/attribute
+    """
+    
+    # seems very slow....
+    js = [
+    incld,
+    {
+        "type":"filters.overlay",
+        "dimension": cldcol,
+        "datasource": inshp,
+#        "layer":"attributes",
+        "column": shpcol
+    },
+    {
+        "filename": incld,
+#        "scale_x":0.0000001,
+#        "scale_y":0.0000001
+    }
+    ]
+    
+    pipeline = pdal.Pipeline(json.dumps(js))
+    pipeline.execute()      
+    
+def clip_cloud(incld, inshp, outcld, column, index, writer='las'):
 
     """
     Clip a pointcloud using pdal specifying the attribute and feature number
@@ -250,6 +438,9 @@ def clip_cloud(incld, inshp, outcld, column, index):
     
     index: int/string/float
             the row to filter by
+
+    writer: string
+            the writer type eg las, ply
     
     """
 
@@ -266,24 +457,36 @@ def clip_cloud(incld, inshp, outcld, column, index):
     inwkt = wkt.iloc[0]
     # poly1 = loads(inwkt)
     
+    # ply precision issue hence we specify here
+    write ="writers." + writer
+    if writer == 'ply':
+        output = {
+        "type": write,
+        "precision": "6f", 
+        "filename":outcld
+        }
+    else:
+         output ={
+        "type": write,
+        "filename":outcld
+        }
+                    
     js = {"pipeline": [
     incld,
     {
         "type":"filters.crop",
         "polygon": inwkt
     },
-    {
-        "type":"writers.las",
-        "filename":outcld
-    }
+     output
+
     ]}
 
     pipeline = pdal.Pipeline(json.dumps(js))
-    pipeline.execute()        
+    pipeline.execute()             
     
 def grid_cloud(incld, outfile, attribute="label", reader="readers.ply",
-               writer="writers.gdal", spref="EPSG:21818", dtype="uint16_t",
-               outtype='mean', resolution=0.1):
+               writer="writers.gdal", spref="EPSG:32630", dtype="uint16_t",
+               outtype='mean', resolution=0.1, rng_limit=None):
     
     """
     Grid a pointcloud attribute using pdal
@@ -311,20 +514,23 @@ def grid_cloud(incld, outfile, attribute="label", reader="readers.ply",
             spatial ref in ESPG format
     
     dtype: string
-            dtype in pdal format (see pdal)
+            dtype in pdal format (see https://pdal.io/types.html) 
+            e.g. uint16_t, float32
         
     outtype: string
-            mean, min or max
+            mean, min, max, idw, count, stdev
             
     resolution: float
             in the unit required
+    
+    rng_limit: string
+        only grid values in a range e.g. "Classification[1:2]" or "label[1:1]"
+        as per the pdal convention
 
     """
     
     #json from args
-    js = {
-          "pipeline":[
-            {
+    js = [{
                 "type": reader,
                 "filename":incld,
         	"spatialreference":spref
@@ -336,10 +542,11 @@ def grid_cloud(incld, outfile, attribute="label", reader="readers.ply",
               "data_type": dtype,
               "output_type": outtype,
               "resolution": resolution
-            }
-          ]
-        }  
-    
+            }]
+
+    if rng_limit != None:
+        js.insert(1, {"type":"filters.range", 
+                   "limits":rng_limit})
     
     pipeline = pdal.Pipeline(json.dumps(js))
     count = pipeline.execute()
@@ -393,9 +600,87 @@ def grid_cloud_batch(folder, attribute="label", reader="readers.ply",
              reader, writer, spref, dtype,
              outtype, resolution) for ply, out in zip(plylist, outlist))
 
+def pdal_denoise(incld, outcld, method="statistical", multi=3, k=8):
+    
+    """
+    Denoise a pointcloud attribute using pdals outlier filters
+    
+    Parameters
+    ----------
+    
+    incld: string
+            input cloud
+    
+    outcld: string
+            output cloud
+    
+    multi: int
+            multiplier
+    
+    k: int
+            k neighbours
+            
+    """
+    
+    js= {
+        "pipeline": [
+            incld,
+            {
+                "type": "filters.outlier",
+                "method": method,
+                "multiplier": multi,
+                "mean_k": k
+            },
+            {
+                "type": "writers.las",
+                "filename": outcld
+            }
+        ]
+        }
+    
+    pipeline = pdal.Pipeline(json.dumps(js))
+    count = pipeline.execute()
+
+def pdal_thin(incld, outcld, method="filters.sample", radius=5):
+    
+    """
+    Thin a pointcloud attribute using pdal
+    
+    Parameters
+    ----------
+    
+    incld: string
+            input cloud
+    
+    outcld: string
+            output cloud
+    
+    method: string
+            one of  filters.voxelgrid, filters.sample (Poisson)
+    
+    radius: int
+            sample radius
+            
+    """
+    
+    
+    js = {"pipeline": [
+            incld, {
+        "type": method,
+        "radius": radius
+        },
+        {
+        "type":"writers.las",
+        "filename":outcld
+        }
+        ]}
+
+    
+    pipeline = pdal.Pipeline(json.dumps(js))
+    count = pipeline.execute()
 
 
-def pdal_smrf(incld, smrf=None, scalar=1.25, slope=0.15, threshold=0.5, 
+def pdal_smrf(incld, smrf=None, elm=False, scalar=1.25, slope=0.15, threshold=0.5, 
                window=18, clsrange="[1:2]", outcld=None):
     """
     Pdal-based simple morphological filter with optional param sets from the 
@@ -409,6 +694,10 @@ def pdal_smrf(incld, smrf=None, scalar=1.25, slope=0.15, threshold=0.5,
     
     outcld: string
             output cloud (if none), results written to input
+    
+    elm: bool
+        Extended Local Minimum (ELM) method helps to identify low noise points 
+        that can adversely affect ground segmentation algorithms
     
     smrf: int 
                 From the Pingel (2013) paper tests - helpful perhaps but no
@@ -434,7 +723,7 @@ def pdal_smrf(incld, smrf=None, scalar=1.25, slope=0.15, threshold=0.5,
             scaling factor (def 1.25)
     
     slope: float
-            slope thresh (def 0.15)
+            slope thresh (percent) (def 0.15)
     
     threshold: float
             elevation threshold (def 0.5)
@@ -452,29 +741,37 @@ def pdal_smrf(incld, smrf=None, scalar=1.25, slope=0.15, threshold=0.5,
         row = sms.iloc[smrf]
         print('Parametrs are:\n', row[2:6])
         params = row[2:6].to_dict()
+        params["ignore"]="Classification[7:7]"
         params["type"] ="filters.smrf"
 
     else:
-         params = {
-            "type":"filters.smrf",
-            "scalar":scalar,
-            "slope":slope,
-            "threshold":threshold,
-            "window":window
-        }
-        
-    js = [
-        incld,
-        params,
-        {
-            "type":"filters.range",
-            "limits":"Classification"+clsrange
-        },
-        outcld
-    ]
+        params = {
+        "type":"filters.smrf",
+        "ignore":"Classification[7:7]",
+        "scalar": scalar,
+        "slope": slope,
+        "threshold":threshold,
+        "window":window} 
+     
+    if elm == True:
+        js= [incld,
+         {"type": "filters.assign",
+          "assignment": "Classification[:]=0"},
+         {"type": "filters.elm", },
+         {"type": "filters.outlier",}]
+    else:
+        js = [incld]
     
+    
+    js.append(params)
+    js.append({"type":"filters.range",
+             "limits":"Classification"+clsrange})
+    js.append(outcld)
+  
     pipeline = pdal.Pipeline(json.dumps(js))
     pipeline.execute()
+
+
 
 def cgal_normals(incld, outcld=None, k=24, method='jet'):
     
@@ -835,8 +1132,27 @@ def cgal_simplify_batch(folder, method='grid',  k=None, para=True, nt=None):
     Parallel(n_jobs=nt, verbose=2)(delayed(cgal_simplify)(
             folder, method=method,  k=k) for p in plylist)
     
+def del_field(incld, fields):
+    
+    """
+    Delete a ply field
 
     
+    Parameters
+    ----------
+    
+    incld: string
+            input folder where pointclouds(ply) reside
+    
+    fields: list of strings
+            the fields to get dumped
+    
+    """
+    pcd = PyntCloud.from_file(incld)
+    
+    pcd.points = pcd.points.drop(columns=fields)
+    
+    pcd.to_file(incld)
 
 def write_vrt(infiles, outfile):
     
@@ -856,10 +1172,331 @@ def write_vrt(infiles, outfile):
     virtpath = outfile
     outvirt = gdal.BuildVRT(virtpath, infiles)
     outvirt.FlushCache()
-    outvirt=None   
+    outvirt=None 
+
+def resize(inRas, outRas, templateRas):
+    
+    """
+    Resize a raster with the pixel dims of another.
+    
+    Assumes they overlap exactly (same geo extent)
+    
+    """
+    
+    rds = gdal.Open(templateRas)
+    xpix = rds.RasterXSize
+    ypix = rds.RasterYSize
     
     
-# TODO this needs replaced
+    ootRas = gdal.Translate(outRas, inRas, width=xpix, height=ypix)
+    ootRas.FlushCache()
+    ootRas=None
+
+def chm(dtm, dsm, chm, blocksize = 256, FMT = None, dtype=None):
+    
+    """ 
+    Create a CHM by dsm - dtm, done in blocks for efficiency
+    
+    Parameters 
+    ----------- 
+    
+    dtm: string
+              the dtm path
+        
+    dsm: string
+            the dsm path
+    
+    chm: string
+            the dsm path
+        
+    FMT: string
+          the output gdal format eg 'Gtiff', 'KEA', 'HFA'
+        
+    blocksize: int
+                the chunk of raster read in & write out
+
+    """
+    
+    if FMT == None:
+        FMT = 'Gtiff'
+        fmt = '.tif'
+    if FMT == 'HFA':
+        fmt = '.img'
+    if FMT == 'KEA':
+        fmt = '.kea'
+    if FMT == 'Gtiff':
+        fmt = '.tif'
+    
+    
+    #dtm
+    inDataset = gdal.Open(dtm, gdal.GA_Update)
+    dtmRas = inDataset.GetRasterBand(1)
+    #get no data as they may be different between rasters
+    dtmnd = dtmRas.GetNoDataValue()
+    
+    #dsm
+    dsmin = gdal.Open(dsm)
+    dsmRas = dsmin.GetRasterBand(1)
+    dsmnd = dsmRas.GetNoDataValue()
+    
+    # ootdtype
+    rdsDtype = dsmRas.DataType
+    
+    # chm - must be from the dsm otherwise we get an offset
+    outDataset = _copy_dataset_config(dsmin,  outMap=chm,
+                         dtype=rdsDtype, bands=1)
+    
+    chmRas = outDataset.GetRasterBand(1)
+    
+    bnnd = inDataset.GetRasterBand(1)
+    cols = inDataset.RasterXSize
+    rows = inDataset.RasterYSize
+
+    # So with most datasets blocksize is a row scanline
+    if blocksize == None:
+        blocksize = bnnd.GetBlockSize()
+        blocksizeX = blocksize[0]
+        blocksizeY = blocksize[1]
+    else:
+        blocksizeX = blocksize
+        blocksizeY = blocksize
+
+        
+    for i in tqdm(range(0, rows, blocksizeY)):
+        if i + blocksizeY < rows:
+            numRows = blocksizeY
+        else:
+            numRows = rows -i
+    
+        for j in range(0, cols, blocksizeX):
+            if j + blocksizeX < cols:
+                numCols = blocksizeX
+            else:
+                numCols = cols - j
+            dsarr = dsmRas.ReadAsArray(j, i, numCols, numRows)
+            # nodata
+            dsarr[dsarr==dsmnd]=0
+            dtmarray = dtmRas.ReadAsArray(j, i, numCols, numRows)
+            # nodata
+            dtmarray[dtmarray==dtmnd]=0
+            #chm
+            chm = dsarr - dtmarray
+            chm[chm < 0] = 0 # in case of minus vals
+            chmRas.WriteArray(chm, j, i)
+            
+    outDataset.FlushCache()
+    outDataset = None
+
+def rasterize(inShp, inRas, outRas, field=None, fmt="Gtiff"):
+    
+    """ 
+    Rasterize a polygon to the extent & geo transform of another raster
+
+
+    Parameters
+    -----------   
+      
+    inRas: string
+            the input image 
+        
+    outRas: string
+              the output polygon file path 
+        
+    field: string (optional)
+             the name of the field containing burned values, if none will be 1s
+    
+    fmt: the gdal image format
+    
+    """
+    
+    
+    
+    inDataset = gdal.Open(inRas)
+    
+    # the usual 
+    
+    outDataset = _copy_dataset_config(inDataset, FMT=fmt, outMap=outRas,
+                         dtype = gdal.GDT_Int32, bands=1)
+    
+    
+    vds = ogr.Open(inShp)
+    lyr = vds.GetLayer()
+    
+    
+    if field == None:
+        gdal.RasterizeLayer(outDataset, [1], lyr, burn_values=[1])
+    else:
+        gdal.RasterizeLayer(outDataset, [1], lyr, options=["ATTRIBUTE="+field])
+    
+    outDataset.FlushCache()
+    
+    outDataset = None
+
+def clip_raster(inRas, inShp, outRas, cutline=True):
+
+    """
+    Clip a raster
+    
+    Parameters
+    ----------
+        
+    inRas: string
+            the input image 
+            
+    outPoly: string
+              the input polygon file path 
+        
+    outRas: string (optional)
+             the clipped raster
+             
+    cutline: bool (optional)
+             retain raster values only inside the polygon       
+            
+   
+    """
+    
+
+    vds = ogr.Open(inShp)
+           
+    rds = gdal.Open(inRas, gdal.GA_ReadOnly)
+    
+    lyr = vds.GetLayer()
+
+    
+    extent = lyr.GetExtent()
+    
+    extent = [extent[0], extent[2], extent[1], extent[3]]
+            
+
+    print('cropping')
+    ootds = gdal.Warp(outRas,
+              rds,
+              format = 'GTiff', outputBounds = extent)
+              
+        
+    ootds.FlushCache()
+    ootds = None
+    rds = None
+    
+    if cutline == True:
+        
+        rds1 = gdal.Open(outRas, gdal.GA_Update)
+        rasterize(inShp, outRas, outRas[:-4]+'mask.tif', field=None,
+                  fmt="Gtiff")
+        
+        mskds = gdal.Open(outRas[:-4]+'mask.tif')
+        
+        mskbnd = mskds.GetRasterBand(1)
+
+        cols = mskds.RasterXSize
+        rows = mskds.RasterYSize
+
+        blocksizeX = 256
+        blocksizeY = 256
+        
+        bands = rds1.RasterCount
+        
+        mskbnd = mskds.GetRasterBand(1)
+        
+        for i in tqdm(range(0, rows, blocksizeY)):
+                if i + blocksizeY < rows:
+                    numRows = blocksizeY
+                else:
+                    numRows = rows -i
+            
+                for j in range(0, cols, blocksizeX):
+                    if j + blocksizeX < cols:
+                        numCols = blocksizeX
+                    else:
+                        numCols = cols - j
+                    for band in range(1, bands+1):
+                        
+                        bnd = rds1.GetRasterBand(band)
+                        array = bnd.ReadAsArray(j, i, numCols, numRows)
+                        mask = mskbnd.ReadAsArray(j, i, numCols, numRows)
+                        
+                        array[mask!=1]=0
+                        bnd.WriteArray(array, j, i)
+                        
+        rds1.FlushCache()
+        rds1 = None
+
+def fill_nodata(inRas, outRas, maxSearchDist=5, smoothingIterations=1):
+    
+    """
+    fill no data using gdal
+    
+    Parameters
+    ----------
+    
+    inRas: string
+              the input image 
+            
+    maxSearchDist: int
+              the input polygon file path 
+        
+    smoothingIterations: int (optional)
+             the clipped raster
+             
+    maskBand: bool (optional)
+             the mask band for where to fill      
+    
+    """
+    
+    rds = gdal.Open(inRas, gdal.GA_Update)
+    
+    bnd = rds.GetRasterBand(1)
+    
+    gdal.FillNodata(targetBand=bnd, maskBand=None, 
+                     maxSearchDist=maxSearchDist, 
+                     smoothingIterations=smoothingIterations)
+    
+    rds.FlushCache()
+    
+    rds=None
+        
+
+def _copy_dataset_config(inDataset, FMT = 'Gtiff', outMap = 'copy',
+                         dtype = gdal.GDT_Int32, bands = 1):
+    """Copies a dataset without the associated rasters.
+
+    """
+
+    
+    x_pixels = inDataset.RasterXSize  
+    y_pixels = inDataset.RasterYSize  
+    geotransform = inDataset.GetGeoTransform()
+    PIXEL_SIZE = geotransform[1]  
+
+    x_min = geotransform[0]
+    y_max = geotransform[3]
+    # x_min & y_max are like the "top left" corner.
+    projection = inDataset.GetProjection()
+    geotransform = inDataset.GetGeoTransform()   
+    #dtype=gdal.GDT_Int32
+    driver = gdal.GetDriverByName(FMT)
+    
+    # Set params for output raster
+    outDataset = driver.Create(
+        outMap, 
+        x_pixels,
+        y_pixels,
+        bands,
+        dtype)
+
+    outDataset.SetGeoTransform((
+        x_min,    # 0
+        PIXEL_SIZE,  # 1
+        0,                      # 2
+        y_max,    # 3
+        0,                      # 4
+        -PIXEL_SIZE))
+        
+    outDataset.SetProjection(projection)
+    
+    return outDataset
+
+# TODO this needs replaced with something better
 def smrf_params():
     
     """

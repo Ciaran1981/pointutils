@@ -1076,7 +1076,8 @@ def cgal_simplify(incld, outcld=None, method='grid',  k=None):
         hierarchy_simplify_point_set(points)
     elif method == 'wlop':
         wlop = Point_set_3()
-        # seem to lose rgb values
+        #TODO seem to lose rgb values - perhaps need to get value from nearest
+        # point??
         wlop_simplify_and_regularize_point_set(points,  # input
                                        wlop)  # Output
         wlop.write(outcld)
@@ -1421,7 +1422,8 @@ def clip_raster(inRas, inShp, outRas, cutline=True):
         rds1.FlushCache()
         rds1 = None
 
-def fill_nodata(inRas, outRas, maxSearchDist=5, smoothingIterations=1):
+def fill_nodata(inRas, outRas, maxSearchDist=5, smoothingIterations=1, 
+                bands=[1]):
     
     """
     fill no data using gdal
@@ -1445,11 +1447,12 @@ def fill_nodata(inRas, outRas, maxSearchDist=5, smoothingIterations=1):
     
     rds = gdal.Open(inRas, gdal.GA_Update)
     
-    bnd = rds.GetRasterBand(1)
+    for band in bands:
+        bnd = rds.GetRasterBand(band)
     
-    gdal.FillNodata(targetBand=bnd, maskBand=None, 
-                     maxSearchDist=maxSearchDist, 
-                     smoothingIterations=smoothingIterations)
+        gdal.FillNodata(targetBand=bnd, maskBand=None, 
+                         maxSearchDist=maxSearchDist, 
+                         smoothingIterations=smoothingIterations)
     
     rds.FlushCache()
     

@@ -1035,6 +1035,7 @@ def get_training_ply(incld, label_field="training", feattype='cgal',
     
     """ 
     Get training from a point cloud on the fly via either cgal or pyntcloud
+    Can use las also!
     
     
     Parameters 
@@ -1048,7 +1049,8 @@ def get_training_ply(incld, label_field="training", feattype='cgal',
               be positive integers
     
     feattype: string
-                either cgal or std
+                cgal (ply only), std(las or ply) or pdal (las only)
+                (pdal feats must be written in advance at is assumed to be 'all')
               
     rgb: bool
               whether there is rgb data to be included           
@@ -1073,18 +1075,22 @@ def get_training_ply(incld, label_field="training", feattype='cgal',
     list of feature names for later ref/plotting
 
     """  
-    # feats
+    pcd = PyntCloud.from_file(incld)
+    
     if feattype == 'cgal':
         featdf = cgal_features_mem(incld,  k=k, rgb=rgb, parallel=True)
-    else:
+    elif feattype == 'std':
         featdf = std_features(incld, outcld=None, k=k,
                  props=['anisotropy', "curvature", "eigenentropy", "eigen_sum",
                          "linearity","omnivariance", "planarity", "sphericity"],
                         nrm_props=None, tofile=False)
-        pass
+    elif feattype == 'pdal':
+        props = ['linearity', 'planarity', 'scattering', 'verticality', 
+                 'omnivariance', 'anisotropy','eigenentropy', 'eigenvaluesum',
+                 'surfacevariation','demantkeverticality', 'density']
+        
+        featdf = pcd.points[props]
     
-    # labels
-    pcd = PyntCloud.from_file(incld)
     
     labels = pcd.points[label_field].to_numpy()
     
@@ -1132,7 +1138,8 @@ def get_training_tiles(folder, label_field="training",
     
     """ 
     Get training from multiple point clouds in a directory
-    Features are calculated on the fly, so expect ~ 8mins per 6.4 million points
+    Features are calculated on the fly (unless using pdal), 
+    so expect ~ 8mins per 6.4 million points
     (typically that's 53 features per point...)
     
     
@@ -1161,7 +1168,8 @@ def get_training_tiles(folder, label_field="training",
         if std features a list of ints eg [20, 40, 60]
     
     feattype: string
-               feature type either cgal or std
+                cgal (ply only), std(las or ply) or pdal (las only)
+                (pdal feats must be written in advance at is assumed to be 'all')
 
     add_fields: list of strings
         additional fields to be included as features
@@ -1217,13 +1225,14 @@ def classify_ply(incld, inModel, class_field='label',
                  add_fields=None):
     
     """ 
-    Classify a point cloud (ply format) with amodel generated with this lib
+    Classify a point cloud (ply format) with a model generated with this lib
     
     Features MUST match exactly of course, including add_fields
     
     As with previous funcs features are calculated on the fly to avoid huge files,
     so expect processing of ~6 million points (*53 features with k=5) to take
-    8 minutes + classification time
+    8 minutes + classification time unless using pdal where they must be written
+    to file in advance
     
     Parameters 
     ----------- 
@@ -1246,7 +1255,10 @@ def classify_ply(incld, inModel, class_field='label',
                path to a new ply to write if not writing to the input one
                
     feattype: string
-               feature type previously used either cgal or std
+               feature type previously used either cgal, std or pdal 
+               (these have much in common just different ways of calculating)
+               pdal features must have been written to file prior to this
+               step
                
     k: int or list of ints
         the number of scales at which to calcualte features
@@ -1261,17 +1273,21 @@ def classify_ply(incld, inModel, class_field='label',
     
     
     # TODO - I/O classify by chunk?
+    pcd = PyntCloud.from_file(incld)
     
     if feattype == 'cgal':
         featdf = cgal_features_mem(incld,  k=k, rgb=rgb, parallel=True)
-    else:
+    elif feattype == 'std':
         featdf = std_features(incld, outcld=None, k=k,
                  props=['anisotropy', "curvature", "eigenentropy", "eigen_sum",
                          "linearity","omnivariance", "planarity", "sphericity"],
                         nrm_props=None, tofile=False)
-
-    
-    pcd = PyntCloud.from_file(incld)
+    elif feattype == 'pdal':
+        props = ['linearity', 'planarity', 'scattering', 'verticality', 'omnivariance', 'anisotropy',
+       'eigenentropy', 'eigenvaluesum', 'surfacevariation',
+       'demantkeverticality', 'density']
+        
+        featdf = pcd.points[props]
     
     if rgb == True:
         featdf['red'] = pcd.points['red'].to_numpy()
@@ -1307,7 +1323,8 @@ def classify_ply(incld, inModel, class_field='label',
     else:
         pcd.to_file(outcld)
 
-
+#TODO replace with an ept/entwine solution?
+        
 def classify_ply_tile(folder, inModel,  class_field='label',
                  rgb=True, k=5,  feattype='cgal', add_fields=None):
     
@@ -1318,7 +1335,8 @@ def classify_ply_tile(folder, inModel,  class_field='label',
     
     As with previous funcs features are calculated on the fly to avoid huge files,
     so expect processing of ~6 million points (*53 features with k=5) to take
-    8 minutes + classification time
+    8 minutes + classification time unless using pdal where they must be written
+    to file in advance
     
      
     Parameters 
@@ -1341,7 +1359,10 @@ def classify_ply_tile(folder, inModel,  class_field='label',
         whether there is rgb data to be included        
                
     feattype: string
-               feature type previously used either cgal or std
+               feature type previously used either cgal, std or pdal 
+               (these have much in common just different ways of calculating)
+               pdal features must have been written to file prior to this
+               step
                
     k: int or list of ints
         the number of scales at which to calcualte features

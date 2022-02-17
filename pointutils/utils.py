@@ -43,6 +43,56 @@ ogr.UseExceptions()
 #metadata = pipeline.metadata
 #log = pipeline.log
 
+def colour_cloud(incld, inras, outcld, 
+                 scale= "Red:1:256, Green:2:256, Blue:3:256",
+                 writer='las'):
+    
+    """
+    Colour a cloud with an image
+    
+    Parameters
+    ----------
+    
+    incld: string
+            input cloud
+    
+    inras: string
+            input raster
+    
+    outcld: string
+            output cloud
+    
+    scale: string
+             scaling eg where band:scale "Red:1:256, Green:2:256, Blue:3:256"
+    
+    writer: string
+            writer type (las, laz, ply, ept)
+    """    
+# TODO not working weirdly
+#    if incld is None:
+#        outcld = incld
+        
+    js = [incld,
+        {
+            "type": "filters.colorization",
+            "dimensions": scale,
+            "raster": inras,
+        },
+#        {
+#            "type": "filters.range",
+#            "limits": "Red[1:]"
+#        },
+        {
+            "type":"writers."+writer,
+            "filename": outcld}
+        ]
+    
+    if writer == 'ply':
+        js[2]["precision"] = "6f"
+    
+    pipeline = pdal.Pipeline(json.dumps(js))
+    pipeline.execute()
+
 def clip_cloud_with_cloud(mskcld, incld, outcld, writer='las'):
     
     """
@@ -66,7 +116,7 @@ def clip_cloud_with_cloud(mskcld, incld, outcld, writer='las'):
     poly = cloud_poly(mskcld, outshp=None)
     
     
-    js = {"pipeline": [
+    js = [
     incld,
     {
         "type":"filters.crop",
@@ -76,7 +126,7 @@ def clip_cloud_with_cloud(mskcld, incld, outcld, writer='las'):
      "type":"writers."+writer,
      "filename":outcld
     }
-    ]}
+    ]
     
     if writer == 'ply':
         js[2]["precision"] = "6f"
@@ -1193,6 +1243,17 @@ def resize(inRas, outRas, templateRas):
     ootRas.FlushCache()
     ootRas=None
 
+# for ref....
+#   The nump and gdal dtype (ints)
+#   {"uint8": 1,"int8": 1,"uint16": 2,"int16": 3,"uint32": 4,"int32": 5,
+#    "float32": 6, "float64": 7, "complex64": 10, "complex128": 11}
+
+# a numpy gdal conversion dict - this seems a bit long-winded
+#        dtypes = {"1": np.uint8, "2": np.uint16,
+#              "3": np.int16, "4": np.uint32,"5": np.int32,
+#              "6": np.float32,"7": np.float64,"10": np.complex64,
+#              "11": np.complex128}
+
 def chm(dtm, dsm, chm, blocksize = 256, FMT = None, dtype=None):
     
     """ 
@@ -1287,6 +1348,139 @@ def chm(dtm, dsm, chm, blocksize = 256, FMT = None, dtype=None):
             
     outDataset.FlushCache()
     outDataset = None
+    
+
+def mask_raster_multi(inputIm,  mval=1, rule='==', outval=None, mask=None,
+                    blocksize = 256, FMT = None, dtype=None):
+    """ 
+    Perform a numpy masking operation on a raster where all values
+    corresponding to, less than or greater than the mask value are retained 
+    - does this in blocks for efficiency on larger rasters
+    
+    Parameters 
+    ----------- 
+    
+    inputIm: string
+              the granule folder 
+        
+    mval: int
+           the masking value that delineates pixels to be kept
+    
+    rule: string
+            the logic for masking either '==', '<' or '>'
+        
+    outval: numerical dtype eg int, float
+              the areas removed will be written to this value default is 0
+        
+    mask: string
+            the mask raster to be used (optional)
+        
+    FMT: string
+          the output gdal format eg 'Gtiff', 'KEA', 'HFA'
+        
+    mode: string
+           None > 10m data, '20' >20m
+        
+    blocksize: int
+                the chunk of raster read in & write out
+
+    """
+    
+    if FMT == None:
+        FMT = 'Gtiff'
+        fmt = '.tif'
+    if FMT == 'HFA':
+        fmt = '.img'
+    if FMT == 'KEA':
+        fmt = '.kea'
+    if FMT == 'Gtiff':
+        fmt = '.tif'
+    
+    
+    if outval == None:
+        outval = 0
+    
+    inDataset = gdal.Open(inputIm, gdal.GA_Update)
+    bands = inDataset.RasterCount
+    
+    bnnd = inDataset.GetRasterBand(1)
+    cols = inDataset.RasterXSize
+    rows = inDataset.RasterYSize
+
+
+    # So with most datasets blocksize is a row scanline
+    if blocksize == None:
+        blocksize = bnnd.GetBlockSize()
+        blocksizeX = blocksize[0]
+        blocksizeY = blocksize[1]
+    else:
+        blocksizeX = blocksize
+        blocksizeY = blocksize
+    
+    if mask != None:
+        msk = gdal.Open(mask)
+        maskRas = msk.GetRasterBand(1)
+        
+        for i in tqdm(range(0, rows, blocksizeY)):
+            if i + blocksizeY < rows:
+                numRows = blocksizeY
+            else:
+                numRows = rows -i
+        
+            for j in range(0, cols, blocksizeX):
+                if j + blocksizeX < cols:
+                    numCols = blocksizeX
+                else:
+                    numCols = cols - j
+                mask = maskRas.ReadAsArray(j, i, numCols, numRows)
+                if mval not in mask:
+                    array = np.zeros(shape=(numRows,numCols), dtype=np.int32)
+                    for band in range(1, bands+1):
+                        bnd = inDataset.GetRasterBand(band)
+                        bnd.WriteArray(array, j, i)
+                else:
+                    
+                    for band in range(1, bands+1):
+                        bnd = inDataset.GetRasterBand(band)
+                        array = bnd.ReadAsArray(j, i, numCols, numRows)
+                        if rule == '==':
+                            array[array != mval]=0
+                        elif rule == '<':
+                            array[array < mval]=0
+                        elif rule == '>':
+                            array[array > mval]=0
+                        bnd.WriteArray(array, j, i)
+                        
+    else:
+             
+        for i in tqdm(range(0, rows, blocksizeY)):
+                if i + blocksizeY < rows:
+                    numRows = blocksizeY
+                else:
+                    numRows = rows -i
+            
+                for j in range(0, cols, blocksizeX):
+                    if j + blocksizeX < cols:
+                        numCols = blocksizeX
+                    else:
+                        numCols = cols - j
+                    for band in range(1, bands+1):
+                        bnd = inDataset.GetRasterBand(1)
+                        array = bnd.ReadAsArray(j, i, numCols, numRows)
+                        if rule == '==':
+                            array[array != mval]=0
+                        elif rule == '<':
+                            array[array < mval]=0
+                        elif rule == '>':
+                            array[array > mval]=0
+                        if outval != None:
+                            array[array == mval] = outval     
+                            bnd.WriteArray(array, j, i)
+
+           
+        inDataset.FlushCache()
+        inDataset = None
+
 
 def rasterize(inShp, inRas, outRas, field=None, fmt="Gtiff"):
     
@@ -1422,7 +1616,7 @@ def clip_raster(inRas, inShp, outRas, cutline=True):
         rds1.FlushCache()
         rds1 = None
 
-def fill_nodata(inRas, outRas, maxSearchDist=5, smoothingIterations=1, 
+def fill_nodata(inRas, maxSearchDist=5, smoothingIterations=1, 
                 bands=[1]):
     
     """
@@ -1447,9 +1641,8 @@ def fill_nodata(inRas, outRas, maxSearchDist=5, smoothingIterations=1,
     
     rds = gdal.Open(inRas, gdal.GA_Update)
     
-    for band in bands:
+    for band in tqdm(bands):
         bnd = rds.GetRasterBand(band)
-    
         gdal.FillNodata(targetBand=bnd, maskBand=None, 
                          maxSearchDist=maxSearchDist, 
                          smoothingIterations=smoothingIterations)

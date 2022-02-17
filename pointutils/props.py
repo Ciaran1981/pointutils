@@ -25,6 +25,69 @@ import pdal
 import json
 from osgeo import gdal
 
+def pdal_features(incld, outcld, k=8, nt=8, writer='las', optim=True,
+                  features='all'):
+    
+    """ 
+    Calculate pdal-based point features and write to a new cloud MUST be las
+    at present
+       
+    Parameters 
+    ----------- 
+    
+    incld: string
+              the input point cloud
+        
+    outcld: string
+               the output point cloud if None then write to incld
+               
+    k: int
+            the no of neighbours (8)
+            
+    nt: int
+            no of threads
+    
+    writer: file type to write
+            e.g. ply, las
+    
+    optim: bool
+            enable computation of features using precomputed optimal neighborhoods
+    
+    features: string
+                features to compute  default is 'all'
+    """ 
+    
+    
+    js = [incld,
+        {
+            "type":"filters.optimalneighborhood"
+        },
+        {
+            "type":"filters.covariancefeatures",
+            "knn":k,
+            "threads": nt,
+            "optimized": optim,
+            "feature_set": features
+        },
+        {
+            "type":"writers."+writer,
+            "filename": outcld
+        }
+        ]
+    # RuntimeError: writers.ply: Can't write dimension of type 'uint64_t'
+    if writer == 'ply':
+        js[3]["precision"] = "6f"
+        
+    # for las somewhere to put these fts
+    if writer == 'las':
+        js[3]["extra_dims"] = "all"
+        js[3]["forward"] = "all"
+        js[3]["minor_version"] = 4
+    
+    pipeline = pdal.Pipeline(json.dumps(js))
+    count = pipeline.execute()
+
+
 def cgal_features(incld, outcld=None, k=5, rgb=True, parallel=True):
     
     """ 

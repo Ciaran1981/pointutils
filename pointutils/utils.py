@@ -606,7 +606,8 @@ def grid_cloud(incld, outfile, attribute="label", reader="readers.ply",
     
 def grid_cloud_batch(folder, attribute="label", reader="readers.ply", 
                     writer="writers.gdal", spref="EPSG:21818", 
-                    dtype="uint16_t", outtype='mean', resolution=0.1, nt=-1):
+                    dtype="uint16_t", outtype='mean', resolution=0.1, nt=-1,
+                    rng_limit=None):
     
     """
     Grid pointclouds attribute using pdal
@@ -640,9 +641,9 @@ def grid_cloud_batch(folder, attribute="label", reader="readers.ply",
             in the unit required
 
     """
+    _ , ext = os.path.splitext(reader)
     
-    
-    plylist = glob(os.path.join(folder, '*.ply'))
+    plylist = glob(os.path.join(folder, '*'+ext))
     plylist.sort()
 
     outlist = [ply[:-3]+'tif' for ply in plylist]
@@ -650,7 +651,7 @@ def grid_cloud_batch(folder, attribute="label", reader="readers.ply",
         
     Parallel(n_jobs=nt, verbose=2)(delayed(grid_cloud)(ply, out, attribute,
              reader, writer, spref, dtype,
-             outtype, resolution) for ply, out in zip(plylist, outlist))
+             outtype, resolution, rng_limit) for ply, out in zip(plylist, outlist))
 
 def pdal_denoise(incld, outcld, method="statistical", multi=3, k=8):
     
@@ -822,7 +823,7 @@ def pdal_smrf(incld, smrf=None, elm=False, scalar=1.25, slope=0.15, threshold=0.
     pipeline = pdal.Pipeline(json.dumps(js))
     pipeline.execute()
 
-def iter_smrf(incld,  params={'scalar': [1,5,10], 'slope':[0.25,0.5, 1], 
+def iter_smrf(incld,  params={'scalar': [1,5,10], 'slope':[0.25,0.5,1], 
                                   'thresh':[0.1,0.5,1], 
                                   'wind':[5,10,20]},
             clsrange="[1:2]", para=False):

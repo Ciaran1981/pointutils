@@ -31,6 +31,7 @@ from osgeo import gdal, ogr, osr
 from shapely.wkt import loads
 from shapely.geometry import Polygon, LineString
 from subprocess import call
+from sklearn.model_selection import ParameterGrid
 
 gdal.UseExceptions()
 ogr.UseExceptions()
@@ -241,7 +242,8 @@ def merge_cloud(inclds, outcld, reader="readers.ply", writer="ply"):
     count = pipeline.execute()
     
 
-def cloud_poly(incld, outshp=None, polytype="ESRI Shapefile"):
+def cloud_poly(incld, outshp=None, polytype="ESRI Shapefile",
+               reader="readers.las"):
     
     """
     Return the non-zero extent as a shapely polygon
@@ -265,7 +267,7 @@ def cloud_poly(incld, outshp=None, polytype="ESRI Shapefile"):
     
     """
 
-
+    
     js = [incld, 
           {"type" : "filters.hexbin"}]
     
@@ -283,7 +285,7 @@ def cloud_poly(incld, outshp=None, polytype="ESRI Shapefile"):
     
     if outshp != None:
         # this is a wkt
-        spref = metajson['metadata']['readers.las']['spatialreference']
+        spref = metajson['metadata'][reader]['spatialreference']
         
         proj = osr.SpatialReference()
         proj.ImportFromWkt(spref)
@@ -729,7 +731,6 @@ def pdal_thin(incld, outcld, method="filters.sample", radius=5):
     pipeline = pdal.Pipeline(json.dumps(js))
     count = pipeline.execute()
 
-
 def pdal_smrf(incld, smrf=None, elm=False, scalar=1.25, slope=0.15, threshold=0.5, 
                window=18, clsrange="[1:2]", outcld=None):
     """
@@ -770,7 +771,7 @@ def pdal_smrf(incld, smrf=None, elm=False, scalar=1.25, slope=0.15, threshold=0.
                 15 = Underpass
                     
     scalar: float
-            scaling factor (def 1.25)
+            elevation scaling factor (def 1.25)
     
     slope: float
             slope thresh (percent) (def 0.15)
@@ -821,7 +822,56 @@ def pdal_smrf(incld, smrf=None, elm=False, scalar=1.25, slope=0.15, threshold=0.
     pipeline = pdal.Pipeline(json.dumps(js))
     pipeline.execute()
 
+def iter_smrf(incld,  params={'scalar': [1,5,10], 'slope':[0.25,0.5, 1], 
+                                  'thresh':[0.1,0.5,1], 
+                                  'wind':[5,10,20]},
+            clsrange="[1:2]", para=False):
+    
+    """
+    Run all possible parameter combinations for the smrf algorithm. 
+    Output clouds will be named by param set and same file type
+    
+    Esoteric task for recent project. See pdal_smrf for an explanation of 
+    parameters
+    
+    Parameters
+    ----------
+    
+    incld: string
+            input cloud
+    
+    params: dict
+            parameter dict with values to be run
+                    
+    
+    """
+    
+    # use sklearn to produce the generator
+    param_grid = ParameterGrid(params)
+    
+    # do the task....(could be parallelized...but not sure how much of cgal C++
+    # already is)
+    for p in tqdm(param_grid):
+        
+        ootcld =_sm_rename(incld, p)
+        pdal_smrf(incld,  scalar=p['scalar'], slope=p['slope'], 
+                  threshold=p['thresh'], 
+                  window=p['wind'], clsrange=clsrange, outcld=ootcld)
 
+def _sm_rename(incld, p):
+    
+    """
+    For the above smrf iter
+    """
+    st = str(p)
+    st = st.replace("': ", "")
+    st = st.replace("{'", "")
+    st = st.replace("}", "")
+    st = st.replace(", '", "_")
+    nm, ext = os.path.splitext(incld)
+    ootname = nm+"_"+st+ext
+
+    return ootname
 
 def cgal_normals(incld, outcld=None, k=24, method='jet'):
     
@@ -1165,7 +1215,7 @@ def cgal_simplify_batch(folder, method='grid',  k=None, para=True, nt=None):
     nt: int
         no of parallel jobs (if none will be no of input files)   
     """
-    
+
     plylist = glob(os.path.join(folder, '*.ply'))
     plylist.sort()
     

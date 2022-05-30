@@ -32,6 +32,7 @@ from shapely.wkt import loads
 from shapely.geometry import Polygon, LineString
 from subprocess import call
 from sklearn.model_selection import ParameterGrid
+from pointutils.gdal_merge import _merge
 
 gdal.UseExceptions()
 ogr.UseExceptions()
@@ -534,7 +535,95 @@ def clip_cloud(incld, inshp, outcld, column, index, writer='las'):
     ]}
 
     pipeline = pdal.Pipeline(json.dumps(js))
-    pipeline.execute()             
+    pipeline.execute() 
+
+
+def grid_rgb(incld, outfile, fill=True, no_data=0, reader="readers.las", 
+               writer="writers.gdal", spref="EPSG:32630", dtype="uint16_t",
+               outtype='mean', resolution=0.1, rng_limit=None, para=True):
+
+    
+    """
+    Grid RGB and intensity into a multiband raster. 
+    
+    Parameters
+    ----------
+    
+    incld: string
+            input cloud
+    
+    outfile: string
+            output cloud
+    
+    fill: bool
+            whether to fill no data - though could just grid coarser....
+    
+    no_data: 
+            the no_data value to assign to the raster
+    
+    reader: string
+            the pdal reader type (see pdal readers)
+    
+    writer: string
+            the pdal reader type (see pdal writers)
+    
+    spref: string
+            spatial ref in ESPG format
+    
+    dtype: string
+            dtype in pdal format (see https://pdal.io/types.html) 
+            e.g. uint16_t, float32
+        
+    outtype: string
+            mean, min, max, idw, count, stdev
+            
+    resolution: float
+            in the unit required
+    
+    rng_limit: string
+        only grid values in a range e.g. "Classification[1:2]" or "label[1:1]"
+        as per the pdal convention
+    
+    para: bool
+        whether to process in parallel or not - be careful with big point
+        clouds on this front.
+
+    """
+    # temporary assumption file type is 3 letters! Change this....
+    clrs = ['r', 'g', 'b', 'nir']
+    # list of raster to create
+    tmplist = [incld[:-4]+c+'.tif' for c in clrs]
+    # when pulling from las/ply
+    att = ['Red', 'Green', 'Blue', 'Intensity']
+    
+    # no of threads
+    nt = 4
+    
+    if para == True:
+        Parallel(n_jobs=nt, verbose=2)(delayed(grid_cloud)(incld, t, k,
+             reader, writer, spref, dtype,
+             outtype, resolution, rng_limit) for t, k in zip(tmplist, att))
+    else:
+        # There could be a minor chance RAM is consumed with big clouds
+        # so sequential here in case e.g 170ma points = 70% of 96gb 
+        for t, k in zip(tmplist, att):
+            grid_cloud(incld, t, k ,reader, writer, spref, dtype,
+                 outtype, resolution, rng_limit)
+            
+    _merge(names=tmplist, out_file=outfile, a_nodata=no_data)
+    
+    # fill holes - usually required.
+    if fill == True:
+        print('filling no data holes')
+        fill_nodata(outfile, maxSearchDist=5, smoothingIterations=1, 
+                    bands=[1, 2, 3, 4])
+    
+    # dump the temp rasters
+    [os.remove(t) for t in tmplist]
+    
+    
+
+       
     
 def grid_cloud(incld, outfile, attribute="label", reader="readers.ply",
                writer="writers.gdal", spref="EPSG:32630", dtype="uint16_t",

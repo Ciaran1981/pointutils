@@ -33,6 +33,8 @@ from shapely.geometry import Polygon, LineString
 from subprocess import call
 from sklearn.model_selection import ParameterGrid
 from pointutils.gdal_merge import _merge
+import sys
+from skimage.exposure import rescale_intensity
 
 gdal.UseExceptions()
 ogr.UseExceptions()
@@ -44,6 +46,57 @@ ogr.UseExceptions()
 #arrays = pipeline.arrays
 #metadata = pipeline.metadata
 #log = pipeline.log
+
+def split_cloud(incld, capacity=2000000, writer='ply'):
+    
+    """
+    Split a cloud into smaller tiles of certain capacity
+    
+    
+    Parameters
+    ----------
+    
+    incld: string
+             input cloud
+             
+    outdir: string
+              output directory in which tiles will be stored
+    
+    capacity: int
+                size of tile in points
+    
+    """
+    #TODO not working produces only one cloud
+    # for ref
+    # pdal split --capacity 2000000 --writers.ply.precision=6f BEL06_2_sub4orig.ply out.ply
+    # apparently uses chipper to split by capacity what format is output supposed to be?
+    # complains if I don't give it a file name but then if I do
+    # returns a single cloud. 
+    
+    hd, tl = os.path.split(incld)
+    
+    tile = os.path.join(hd, "tile."+writer)
+    
+    js = [
+    incld,
+    {
+        "type":"filters.chipper",
+        "capacity":capacity
+    },
+    {
+        "type":"writers."+writer,
+        #"filename": tile
+    }
+    ]
+    
+    if writer == 'ply':
+        js[2]["precision"] = "6f"
+    
+    pipeline = pdal.Pipeline(json.dumps(js))
+    pipeline.execute()    
+    
+    
+    
 
 def colour_cloud(incld, inras, outcld, 
                  scale= "Red:1:256, Green:2:256, Blue:3:256",
@@ -135,7 +188,7 @@ def clip_cloud_with_cloud(mskcld, incld, outcld, writer='las'):
 
     pipeline = pdal.Pipeline(json.dumps(js))
     pipeline.execute()
-    
+
     
     
 
@@ -243,8 +296,8 @@ def merge_cloud(inclds, outcld, reader="readers.ply", writer="ply"):
     count = pipeline.execute()
     
 
-def cloud_poly(incld, outshp=None, polytype="ESRI Shapefile",
-               reader="readers.las"):
+def cloud_poly(incld, outshp=None, polytype="ESRI Shapefile", edge_sz=1,
+               thresh=0, reader="readers.las", spref=None):
     
     """
     Return the non-zero extent as a shapely polygon
@@ -261,6 +314,15 @@ def cloud_poly(incld, outshp=None, polytype="ESRI Shapefile",
     polytype: string
             the ogr term for the output polygon e.g. "ESRI Shapefile" (optional)
     
+    edge_sz: int
+        min edge size of each line
+    
+    thresh: int
+         threshold
+    
+    spref: int
+            an espg code if the point cloud doesn't have one
+    
     Returns
     -------
     
@@ -268,9 +330,13 @@ def cloud_poly(incld, outshp=None, polytype="ESRI Shapefile",
     
     """
 
+#    filters.hexbin.edge_size=10 \
+#    --filters.hexbin.threshold=1
     
     js = [incld, 
-          {"type" : "filters.hexbin"}]
+          {"type" : "filters.hexbin",
+           "edge_size": edge_sz,
+           "threshold": thresh}]
     
     pipeline = pdal.Pipeline(json.dumps(js))
     
@@ -286,10 +352,13 @@ def cloud_poly(incld, outshp=None, polytype="ESRI Shapefile",
     
     if outshp != None:
         # this is a wkt
-        spref = metajson['metadata'][reader]['spatialreference']
-        
         proj = osr.SpatialReference()
-        proj.ImportFromWkt(spref)
+        
+        if spref == None:
+            spref = metajson['metadata'][reader]['spatialreference']
+            proj.ImportFromWkt(spref)
+        else:
+            proj.ImportFromEPSG(spref)
         
         out_drv = ogr.GetDriverByName(polytype)
         
@@ -1666,6 +1735,126 @@ def rasterize(inShp, inRas, outRas, field=None, fmt="Gtiff"):
     outDataset.FlushCache()
     
     outDataset = None
+    
+def polygonize(inRas, outPoly, outField=None,  mask=True, band=1, 
+               filetype="ESRI Shapefile"):
+    
+    """ 
+    Polygonise a raster
+
+    Parameters
+    -----------   
+      
+    inRas: string
+            the input image   
+        
+    outPoly: string
+              the output polygon file path 
+        
+    outField: string (optional)
+             the name of the field containing burnded values
+
+    mask: bool (optional)
+            use the input raster as a mask
+
+    band: int
+           the input raster band
+            
+    """    
+    
+    #TODO investigate ways of speeding this up   
+
+    options = []
+    src_ds = gdal.Open(inRas)
+    if src_ds is None:
+        print('Unable to open %s' % inRas)
+        sys.exit(1)
+    
+    try:
+        srcband = src_ds.GetRasterBand(band)
+    except RuntimeError as e:
+        # for example, try GetRasterBand(10)
+        print('Band ( %i ) not found')
+        print(e)
+        sys.exit(1)
+    if mask == True:
+        maskband = src_ds.GetRasterBand(band)
+        options.append('-mask')
+    else:
+        mask = False
+        maskband = None
+    
+#    srs = osr.SpatialReference()
+#    srs.ImportFromWkt( src_ds.GetProjectionRef() )
+    
+    ref = src_ds.GetSpatialRef()
+    #
+    #  create output datasource
+    #
+    dst_layername = outPoly
+    drv = ogr.GetDriverByName(filetype)
+    dst_ds = drv.CreateDataSource(dst_layername)
+    dst_layer = dst_ds.CreateLayer(dst_layername, srs = ref )
+    
+    if outField is None:
+        dst_fieldname = 'DN'
+        fd = ogr.FieldDefn(dst_fieldname, ogr.OFTInteger)
+        dst_layer.CreateField(fd)
+        dst_field = dst_layer.GetLayerDefn().GetFieldIndex(dst_fieldname)
+
+    
+    else: 
+        dst_field = dst_layer.GetLayerDefn().GetFieldIndex(outField)
+
+    gdal.Polygonize(srcband, maskband, dst_layer, dst_field,
+                    callback=gdal.TermProgress)
+    dst_ds.FlushCache()
+    
+    srcband = None
+    src_ds = None
+    dst_ds = None
+    
+
+def normalise_raster(inras, outras, dst_min=0, dst_max=100):
+    
+    """
+    Scale a single band raster to 0 - 100
+    
+    Parameters
+    ----------
+    
+    inras: string
+            input raster
+        
+    outras: string
+             output raster
+    
+    dst_min: int/float
+             min value
+             
+    dst_max: int/float
+              max value
+
+    """
+    #TODO add flexibility to the out range and datatype
+       
+    img = raster2array(inras, bands=[1])
+    
+    rescl = rescale_intensity(img, in_range='image',
+                      out_range=(dst_min, dst_max)).astype(np.uint8)
+    dtype = gdal.GDT_Byte 
+    array2raster(rescl, 1, inras, outras, dtype, FMT=None)
+    
+    
+    #TODO this would have been quicker one assumes
+    # int object not iterable wtf
+    # tried string now says RuntimeError: Too many command options '.'
+#    src_min = str(bnd.GetMinimum())
+#    src_max = str(bnd.GetMaximum())
+#    params = [src_min, src_max, str(dst_min), str(dst_max)]
+#    ds = gdal.Translate(outras, rds, scaleParams=params)
+#    ds = None
+#    rds = None
 
 def clip_raster(inRas, inShp, outRas, cutline=True):
 
@@ -1943,6 +2132,133 @@ def smrf_params():
     df['window'] = df['window'].astype(float)
     return df
 
+def array2raster(array, bands, inRaster, outRas, dtype, FMT=None):
+    
+    """
+    Save a raster from a numpy array using the geoinfo from another.
+    
+    Parameters
+    ----------      
+    array: np array
+            a numpy array.
+    
+    bands: int
+            the no of bands. 
+    
+    inRaster: string
+               the path of a raster.
+    
+    outRas: string
+             the path of the output raster.
+    
+    dtype: int 
+            though you need to know what the number represents!
+            a GDAL datatype (see the GDAL website) e.g gdal.GDT_Int32
+    
+    FMT: string 
+           (optional) a GDAL raster format (see the GDAL website) eg Gtiff, HFA, KEA.
+        
+    
+    """
+
+    if FMT == None:
+        FMT = 'Gtiff'
+        
+    if FMT == 'HFA':
+        fmt = '.img'
+    if FMT == 'KEA':
+        fmt = '.kea'
+    if FMT == 'Gtiff':
+        fmt = '.tif'    
+    
+    inras = gdal.Open(inRaster, gdal.GA_ReadOnly)    
+    
+    x_pixels = inras.RasterXSize  # number of pixels in x
+    y_pixels = inras.RasterYSize  # number of pixels in y
+    geotransform = inras.GetGeoTransform()
+    PIXEL_SIZE = geotransform[1]  # size of the pixel...they are square so thats ok.
+    #if not would need w x h
+    x_min = geotransform[0]
+    y_max = geotransform[3]
+    # x_min & y_max are like the "top left" corner.
+    projection = inras.GetProjection()
+    geotransform = inras.GetGeoTransform()   
+
+    driver = gdal.GetDriverByName(FMT)
+
+    dataset = driver.Create(
+        outRas, 
+        x_pixels,
+        y_pixels,
+        bands,
+        dtype)
+
+    dataset.SetGeoTransform((
+        x_min,    # 0
+        PIXEL_SIZE,  # 1
+        0,                      # 2
+        y_max,    # 3
+        0,                      # 4
+        -PIXEL_SIZE))    
+
+    dataset.SetProjection(projection)
+    if bands == 1:
+        dataset.GetRasterBand(1).WriteArray(array)
+        dataset.FlushCache()  # Write to disk.
+        dataset=None
+        #print('Raster written to disk')
+    else:
+    # Here we loop through bands
+        for band in range(1,bands+1):
+            Arr = array[:,:,band-1]
+            dataset.GetRasterBand(band).WriteArray(Arr)
+        dataset.FlushCache()  # Write to disk.
+        dataset=None
+        #print('Raster written to disk')
+        
+def raster2array(inRas, bands=[1]):
+    
+    """
+    Read a raster and return an array, either single or multiband
+
+    
+    Parameters
+    ----------
+    
+    inRas: string
+                  input  raster 
+                  
+    bands: list
+                  a list of bands to return in the array
+    
+    """
+    rds = gdal.Open(inRas)
+   
+   
+    if len(bands) ==1:
+        # then we needn't bother with all the crap below
+        inArray = rds.GetRasterBand(bands[0]).ReadAsArray()
+        
+    else:
+        #   The nump and gdal dtype (ints)
+        #   {"uint8": 1,"int8": 1,"uint16": 2,"int16": 3,"uint32": 4,"int32": 5,
+        #    "float32": 6, "float64": 7, "complex64": 10, "complex128": 11}
+        
+        # a numpy gdal conversion dict - this seems a bit long-winded
+        dtypes = {"1": np.uint8, "2": np.uint16,
+              "3": np.int16, "4": np.uint32,"5": np.int32,
+              "6": np.float32,"7": np.float64,"10": np.complex64,
+              "11": np.complex128}
+        rdsDtype = rds.GetRasterBand(1).DataType
+        inDt = dtypes[str(rdsDtype)]
+        
+        inArray = np.zeros((rds.RasterYSize, rds.RasterXSize, len(bands)), dtype=inDt) 
+        for idx, band in enumerate(bands):  
+            rA = rds.GetRasterBand(band).ReadAsArray()
+            inArray[:, :, idx]=rA
+   
+   
+    return inArray
 #def cldcompare_merge(folder):
 #    
 #    """

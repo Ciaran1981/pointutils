@@ -1440,7 +1440,8 @@ def extract_train_points(incld, outcld):
         
 def create_model_cgal(incld, outModel, classes, k=5, rgb=False, method=None,
                       normal=False,
-                      outcld=None,  ntrees=25, depth=20):
+                      outcld=None,  ntrees=25, depth=20, cut_strngth=0.2,
+                      n_sub=12):
     
     """ 
     train a point cloud (ply format) with a model generated using CGAL
@@ -1458,7 +1459,7 @@ def create_model_cgal(incld, outModel, classes, k=5, rgb=False, method=None,
               the input point cloud
     
     outModel: string
-          the input point cloud
+          the output model
           
     classes: list of strings
             the class labels in order
@@ -1541,8 +1542,8 @@ def create_model_cgal(incld, outModel, classes, k=5, rgb=False, method=None,
         print("Classifying with graphcut...")
         classify_with_graphcut(points, labels, classifier,
                                generator.neighborhood().k_neighbor_query(6),
-                               0.5,  # strength of graphcut
-                               12,   # nb subdivisions (speed up)
+                               cut_strngth,  # strength of graphcut
+                               n_sub,   # nb subdivisions (speed up)
                                classification)
     elif method == "smoothing":
         print("Classifying with local smoothing...")
@@ -1572,7 +1573,7 @@ def create_model_cgal(incld, outModel, classes, k=5, rgb=False, method=None,
               " iou =", evaluation.intersection_over_union(label))
     
     #TODO return the classif summary
-    return 
+    # return 
         
         
 

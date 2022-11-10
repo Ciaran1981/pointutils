@@ -35,7 +35,7 @@ from sklearn.model_selection import ParameterGrid
 from pointutils.gdal_merge import _merge
 import sys
 from skimage.exposure import rescale_intensity
-
+import rasterio
 gdal.UseExceptions()
 ogr.UseExceptions()
 
@@ -85,7 +85,7 @@ def split_cloud(incld, capacity=2000000, writer='ply'):
     },
     {
         "type":"writers."+writer,
-        #"filename": tile
+        "filename": tile
     }
     ]
     
@@ -442,7 +442,7 @@ def create_ogr_poly(outfile, spref, file_type="ESRI Shapefile", field="id",
     
     
 
-def intersect_clip(incld, inshp, outcld, column, index):
+def intersect_clip(incld, inshp, outcld, column, index, writer='las'):
     
     """
     Clip a pointcloud with a polygon if it intersects the polygon
@@ -469,6 +469,9 @@ def intersect_clip(incld, inshp, outcld, column, index):
     
     outcld: string
             input cloud
+
+    writer: string
+            the writer type eg las, ply
     
     """
     
@@ -488,7 +491,7 @@ def intersect_clip(incld, inshp, outcld, column, index):
     poly = loads(inwkt)
     
     if cldpoly.intersects(poly) == True:
-        clip_cloud(incld, inshp, outcld, column, index)
+        clip_cloud(incld, inshp, outcld, column, index, writer)
     else:
         print("pointcloud does not intersect polygon")
 
@@ -605,6 +608,27 @@ def clip_cloud(incld, inshp, outcld, column, index, writer='las'):
 
     pipeline = pdal.Pipeline(json.dumps(js))
     pipeline.execute() 
+
+
+# the pdal way on their site....
+## seemingly no need to specify esri 
+#    js= [
+#        bigcld,
+#        {
+#            "column": "DN",
+#            "datasource": maskpoly,
+#            "dimension": "Classification",
+#            "type": "filters.overlay"
+#        },
+#        {
+#            "limits": "Classification[1:1]",
+#            "type": "filters.range"
+#        },
+#        bigveg
+#         ]
+
+
+
 
 
 def grid_rgb(incld, outfile, fill=True, no_data=0, reader="readers.las", 
@@ -851,6 +875,8 @@ def pdal_denoise(incld, outcld, method="statistical", multi=3, k=8):
     
     pipeline = pdal.Pipeline(json.dumps(js))
     count = pipeline.execute()
+    
+
 
 def pdal_thin(incld, outcld, method="filters.sample", radius=5):
     
@@ -1958,13 +1984,13 @@ def fill_nodata(inRas, maxSearchDist=5, smoothingIterations=1,
               the input image 
             
     maxSearchDist: int
-              the input polygon file path 
+              max search dist to fill
         
-    smoothingIterations: int (optional)
+    smoothingIterations: int 
              the clipped raster
              
-    maskBand: bool (optional)
-             the mask band for where to fill      
+    bands: list of ints
+            the bands to process      
     
     """
     
@@ -2259,6 +2285,372 @@ def raster2array(inRas, bands=[1]):
    
    
     return inArray
+
+
+def pdal_load(incld, reader='las'):
+    
+    # rather slow...
+    read = "readers."+reader
+    js = [{"type": read,"filename":incld}]
+    
+    pipeline = pdal.Pipeline(json.dumps(js))
+    
+    pipeline.execute()
+    
+    # this is a big messy list
+    arrays = pipeline.arrays
+    metadata = pipeline.metadata
+    
+    return metadata, arrays
+
+def pdal_write(inarray, outcld, writer='las'):
+    
+    write = "writers."+writer
+    
+    js = [{"type": write, "filename": outcld}]
+    
+    pipeline = pdal.Pipeline(json.dumps(js), arrays=inarray)
+    
+    pipeline.execute()
+
+# here for ref
+#def pdal_edit(incld, outcld, reader='readers.las'):
+#    
+#    # rather slow...
+#    js = [{"type": reader,"filename":incld}]
+#    
+#    pipeline = pdal.Pipeline(json.dumps(js))
+#    
+#    pipeline.execute()
+#    
+#    # this is a big messy list
+#    arrays = pipeline.arrays
+#    #metadata = pipeline.metadata
+#    
+#    # how to access a field and change the value
+#    arrays[0]['Classification'][arrays[0]['Classification']==2]=0
+#    
+#    js2 = [{"type": "writers.las", "filename": outcld}]
+#    
+#    pipeline2 = pdal.Pipeline(json.dumps(js2), arrays=arrays)
+#    
+#    pipeline2.execute()
+
+def nrm_point_dtm(incld, inRas, outcld=None):
+    
+    """ 
+    Normalise point heights with a DTM / height relative to ground
+    
+    Parameters
+    ----------
+    
+    incld: string
+                  input pointcloud (las or ply)
+        
+    inRas: string
+                  input raster
+        
+    outcld: string
+              input pointcloud (las or ply)
+        
+    """    
+    
+   
+    # 
+#    rds = gdal.Open(inRas, gdal.GA_ReadOnly)
+#    rb = rds.GetRasterBand(1)
+#    rgt = rds.GetGeoTransform()
+#
+##    if nodata_value:
+##        nodata_value = float(nodata_value)
+##        rb.SetNoDataValue(nodata_value)
+    
+    # MID WAY THROUGH CHANGING THIS TO PDAL/NUMPY WAY AS PYNT CORRUPTS LARGE FILES
+    src = rasterio.open(inRas)
+    
+    _, arrays = pdal_load(incld, reader='las')
+    
+    # not pretty but one line  
+    # issue is for rasterio it needs to be an iterable
+    coords = list(zip(arrays[0]['X'].tolist(), arrays[0]['Y'].tolist()))
+#    
+#    pcd = PyntCloud.from_file(incld)
+#    
+#    df = pcd.points
+    
+#     This works for the above, but is VERY SLOW 2minutes for 1 ma points
+#  useful to test the numpy is correct below
+#    coords = [(x,y) for x, y in zip(df.x, df.y)]
+    
+    # debug
+    #gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.x, df.y))
+    # transform rasterio plot to real world coords
+#    fig, ax = plt.subplots()
+#    src = rasterio.open(inRas)
+#    extent=[src.bounds[0], src.bounds[2], src.bounds[1], src.bounds[3]]
+#    ax = rasterio.plot.show(src, extent=extent, ax=ax, cmap='pink')
+#
+#    gdf.plot(ax=ax)
+    
+    # a loop is not ideal with ma's of points....VERY SLOW
+    #df['grnd'] 
+    # I don't know what this was here for
+    #df['grnd'] = [x for x in src.sample(coords)]
+    
+    # how to access a field and change the value
+    #arrays[0]['Classification'][arrays[0]['Classification']==2]=0
+    # doesn't work trying to insert an array however
+    # this may help
+#    from numpy.lib.recfunctions import append_fields
+#    L = len(arrays[0]['Z'])
+#    Labels = np.ones(L)
+#    new_array = append_fields(arrays[0], 'UserData', Labels)
+ # so can vals be replaced in place?
+ 
+    #Should work, test on small cloud tomorrow
+    
+    res = [x for x in tqdm(src.sample(coords))]
+    # make continuous array
+    gvals = np.concatenate(res, axis=0)
+
+    #df['grnd'] = gvals
+    #df['nrmz'] = df.z - gvals
+    
+    arrays[0]['Z'] = arrays[0]['Z'] - gvals
+    
+    if outcld == None:
+        outcld = incld
+    
+    pdal_write(arrays, outcld, writer='las')
+    
+#    nr = df.nrmz.to_numpy()
+#    nr[nr<0]=0
+#    df['nrmz'] = nr
+#    
+#    if outcld == None:
+#        outcld = incld
+#    pcd.to_file(outcld)
+
+
+
+# TODO coords STILL not correct
+#    # useful to test the numpy is correct below
+##    coords = [(x,y) for x, y in zip(df.x, df.y)]
+#    
+#    # create the pixel coordinates in the table
+#    # this is faster but not sure how to combine the arrays
+#    # reshaping does not correspond to the slower method
+#    df['px'] = (df.x - rgt[0]) / rgt[1]
+#    df['py'] = (df.y - rgt[3]) / rgt[5]
+#    
+#    px = np.int32(np.round(df.px.to_numpy()))
+#    py = np.int32(np.round(df.py.to_numpy()))
+#
+#    src_array = rb.ReadAsArray()
+#    
+#    # this turns out to be relatively simple
+#    #TODO It should probably be a nearest neighbour type search 
+#    # these values are just rounded which may result in errors
+#    gvals = src_array[px, py]
+    
+    # src_array[px, py]=0 # this looks right so why are values below wrong??
+#    
+#    # finally get relative height (we hope)
+#    df['grnd'] = gvals
+#    df['nrmz'] = df.z - gvals
+#    
+#    # weirdly we have loads of negative values....
+#    # something is still wrong with this
+#    nr = df.nrmz.to_numpy()
+#    nr[nr<0]=0
+#    df['nrmz'] = nr
+#    
+#    df = df.drop(columns=['px', 'py', 'grnd'])
+#    pcd.points = df
+
+def drop_cld_value(incld, column='nrmz', rule='<', val=3, outcld=None,
+                   remcld=False):
+    
+    """ 
+    Delete point by threshhold eg less than 3m in height
+    
+    Parameters
+    ----------
+    
+    incld: string
+                  input pointcloud (las or ply)
+
+    column: string
+                  the attribute to threshold eg 'z'
+        
+    rule: string
+            the logic for masking either '==', '<' or '>'
+
+    val: string
+            the value for removal
+        
+    outcld: string
+              input pointcloud (las or ply)
+    
+    remcld: bool
+            output the remaining points as a sperate cloud
+        
+    """    
+
+    pcd = PyntCloud.from_file(incld)
+    
+    df = pcd.points
+    
+    if rule == '<':
+        df = df.drop(df[df[column]<val].index)
+    elif rule == '>':
+        df = df.drop(df[df[column]>val].index)    
+    elif rule == '==':
+        df = df.drop(df[df[column]==val].index)
+    pcd.points = df
+    if outcld == None:
+        outcld=incld
+    pcd.to_file(outcld)
+    
+    if remcld ==True:
+        rem = outcld[:-4]+'_rem.ply'
+        pcd.to_file(rem)
+    
+def zonal_points(inShp, inRas, field, band=1, nodata_value=0, write_stat=True):
+    
+    """ 
+    Get the pixel val at a given point and write to vector
+    
+    Parameters
+    ----------
+    
+    inShp: string
+                  input shapefile
+        
+    inRas: string
+                  input raster
+    
+    field: string
+                    the name of the field
+
+    band: int
+           an integer val eg - 2
+                            
+    nodata_value: numerical
+                   If used the no data val of the raster
+        
+    """    
+    
+   
+
+    rds = gdal.Open(inRas, gdal.GA_ReadOnly)
+    rb = rds.GetRasterBand(band)
+    rgt = rds.GetGeoTransform()
+
+    if nodata_value:
+        nodata_value = float(nodata_value)
+        rb.SetNoDataValue(nodata_value)
+
+    vds = ogr.Open(inShp, 1)  # TODO maybe open update if we want to write stats
+    vlyr = vds.GetLayer(0)
+    
+    if write_stat != None:
+        # if the field exists leave it as ogr is a pain with dropping it
+        # plus can break the file
+        if _fieldexist(vlyr, field) == False:
+            vlyr.CreateField(ogr.FieldDefn(field, ogr.OFTReal))
+    
+    
+    
+    feat = vlyr.GetNextFeature()
+    features = np.arange(vlyr.GetFeatureCount())
+    
+    for label in tqdm(features):
+    
+            if feat is None:
+                continue
+            
+            # the vector geom
+            geom = feat.geometry()
+            
+            #coord in map units
+            mx, my = geom.GetX(), geom.GetY()  
+
+            # Convert from map to pixel coordinates.
+            # No rotation but for this that should not matter
+            px = int((mx - rgt[0]) / rgt[1])
+            py = int((my - rgt[3]) / rgt[5])
+            
+            
+            src_array = rb.ReadAsArray(px, py, 1, 1)
+
+            if src_array is None:
+                # unlikely but if none will have no data in the attribute table
+                continue
+            outval =  int(src_array.max())
+            
+#            if write_stat != None:
+            feat.SetField(field, outval)
+            vlyr.SetFeature(feat)
+            feat = vlyr.GetNextFeature()
+        
+    if write_stat != None:
+        vlyr.SyncToDisk()
+
+
+
+    vds = None
+    rds = None
+
+def apply_lut(src, lut):
+    # dst(I) <-- lut(src)
+    # https://stackoverflow.com/questions/14448763/
+    #is-there-a-convenient-way-to-apply-a-lookup-table-to-a-large-array-in-numpy
+    dst = lut[src]
+    return dst
+
+def colorscale(seg, prop='Area', custom=None):
+    
+    """
+    Colour an array according to a region prop value
+    
+    Parameters
+    ----------
+    
+    seg: np.array
+        input array of labelled image
+    
+    prop: string
+        sklearn region prop
+    
+    custom: list
+            a custom list of values to apply to array
+    
+    Returns
+    -------
+    
+    np array of attributed regions
+    
+    """
+    
+    if custom == None:
+        props = regionprops(np.int32(seg))
+         
+        
+        alist = [p[prop] for p in props] 
+    
+    else:
+        alist = custom
+    
+    # there must be a zero to represent no data so insert at start
+    alist.insert(0, 0)
+    alist = np.array(alist)
+    
+    oot = apply_lut(seg, alist)
+    
+    return oot
+
+
 #def cldcompare_merge(folder):
 #    
 #    """

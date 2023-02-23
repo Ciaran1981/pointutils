@@ -35,7 +35,13 @@ from sklearn.model_selection import ParameterGrid
 from pointutils.gdal_merge import _merge
 import sys
 from skimage.exposure import rescale_intensity
+from skimage.measure import regionprops
+from skimage.transform import rescale
+import dask.array as da
 import rasterio
+from plantcv import plantcv as pcv
+import cv2
+import napari
 gdal.UseExceptions()
 ogr.UseExceptions()
 
@@ -95,11 +101,39 @@ def split_cloud(incld, capacity=2000000, writer='ply'):
     pipeline = pdal.Pipeline(json.dumps(js))
     pipeline.execute()    
     
+def las2ply(incld, outcld):
     
+    """
+    Translate to ply 
+    
+    Parameters
+    ----------
+    
+    incld: string
+            input cloud
+    
+    
+    outcld: string
+            output cloud
+    
+    """    
+
+# TODO pdal screws up RGB values
+    js = [incld,
+
+        {
+            "type":"writers.ply",
+            "filename": outcld,
+            "precision": "6f"
+        }
+        ]
+
+    pipeline = pdal.Pipeline(json.dumps(js))
+    pipeline.execute()    
     
 
 def colour_cloud(incld, inras, outcld, 
-                 scale= "Red:1:256, Green:2:256, Blue:3:256",
+                 scale="Red:1:256, Green:2:256, Blue:3:256",
                  writer='las'):
     
     """
@@ -476,7 +510,7 @@ def intersect_clip(incld, inshp, outcld, column, index, writer='las'):
     """
     
     cldpoly = cloud_poly(incld)
-    
+    pcd
     gdf = gpd.read_file(inshp)
     
     row = gdf[gdf[column]==index]
@@ -524,7 +558,7 @@ def atrribute_cloud(incld, inshp, shpcol, cldcol="Classification"):
     js = [
     incld,
     {
-        "type":"filters.overlay",
+        "type":"filtpcders.overlay",
         "dimension": cldcol,
         "datasource": inshp,
 #        "layer":"attributes",
@@ -878,7 +912,8 @@ def pdal_denoise(incld, outcld, method="statistical", multi=3, k=8):
     
 
 
-def pdal_thin(incld, outcld, method="filters.sample", radius=5):
+def pdal_thin(incld, outcld, method="filters.sample", radius=5, 
+              writer='las'):
     
     """
     Thin a pointcloud attribute using pdal
@@ -897,21 +932,25 @@ def pdal_thin(incld, outcld, method="filters.sample", radius=5):
     
     radius: int
             sample radius
+    
+    writer: str
+           '
             
     """
-    
-    
+
     js = {"pipeline": [
             incld, {
         "type": method,
         "radius": radius
         },
         {
-        "type":"writers.las",
+        "type":"writers."+writer,
         "filename":outcld
         }
         ]}
-
+    
+    if writer == 'ply':
+        js[2]["precision"] = "6f"
     
     pipeline = pdal.Pipeline(json.dumps(js))
     count = pipeline.execute()
@@ -1134,6 +1173,33 @@ def cgal_normal_batch(folder, k=24, method='jet', nt=-1):
     Parallel(n_jobs=nt, verbose=2)(delayed(cgal_normals)(ply,
              outcld=None, k=k, method=method)for ply in plylist)
 
+def cgal_smooth(incld, outcld):
+    
+    """
+    Parameters
+    ----------
+    
+    incld: string
+         input cloud
+         
+    outcld: string
+            output cloud, if none, input will be overwritten 
+    
+    """
+    
+    
+    points = Point_set_3(incld)
+
+    k = estimate_global_k_neighbor_scale(points)
+    scale = estimate_global_range_scale(points)
+    
+    jet_smooth_point_set(points, k, neighbor_radius=scale)
+    
+    if outcld == None:
+        outcld = incld
+    
+    points.write(outcld)
+
 def cgal_edge_upsample(incld, outcld=None, nopoints=1000, sharpness=30.0,
                        edge=1.0, n_radius=-1.0):
     
@@ -1222,7 +1288,7 @@ def cgal_outlier(incld, outcld=None, k=24, distance=0.1, percentage=100,
     
     points.write(outcld)
 
-def split_into_classes(incld, field='label', classes=None):
+def split_into_classes(incld, field='label', classes=None, folder=None):
     
     """
     Split a classified ply file into seperate classes or output only those 
@@ -1237,11 +1303,19 @@ def split_into_classes(incld, field='label', classes=None):
     classes: list of ints
             a list of the classes to create seperate pointclouds with
     
+    folder: string 
+        the dir (if any) the clouds go into
+    
     """
     
     pcd = PyntCloud.from_file(incld)
     
     #recall that pyntcloud child objects are linked, hence the loop
+    
+    if folder == None:
+        folder = os.path.join(os.path.dirname(incld), 'sepCls')
+        if not os.path.exists(folder):
+            os.mkdir(folder)
     
     if classes == None:
         classes = pcd.points[field].unique().tolist()
@@ -1251,6 +1325,8 @@ def split_into_classes(incld, field='label', classes=None):
         # must instantiate new one
         newpoints = PyntCloud(pcd.points[pcd.points[field]==c])
         name, ext = os.path.splitext(incld)
+        name = os.path.basename(name)
+        name = os.path.join(folder, name)
         newpoints.to_file(name+str(c)+ext)
 
 def split_into_classes_batch(folder, field='label', classes=None, nt=-1):
@@ -1810,13 +1886,11 @@ def polygonize(inRas, outPoly, outField=None,  mask=True, band=1,
         mask = False
         maskband = None
     
-#    srs = osr.SpatialReference()
-#    srs.ImportFromWkt( src_ds.GetProjectionRef() )
+    #    srs = osr.SpatialReference()
+    #    srs.ImportFromWkt( src_ds.GetProjectionRef() )
     
     ref = src_ds.GetSpatialRef()
-    #
-    #  create output datasource
-    #
+    #  create output data
     dst_layername = outPoly
     drv = ogr.GetDriverByName(filetype)
     dst_ds = drv.CreateDataSource(dst_layername)
@@ -2336,7 +2410,7 @@ def pdal_write(inarray, outcld, writer='las'):
 #    
 #    pipeline2.execute()
 
-def nrm_point_dtm(incld, inRas, outcld=None):
+def nrm_point_dtm(incld, inRas, outcld=None, reader='las', writer='las'):
     
     """ 
     Normalise point heights with a DTM / height relative to ground
@@ -2368,7 +2442,7 @@ def nrm_point_dtm(incld, inRas, outcld=None):
     # MID WAY THROUGH CHANGING THIS TO PDAL/NUMPY WAY AS PYNT CORRUPTS LARGE FILES
     src = rasterio.open(inRas)
     
-    _, arrays = pdal_load(incld, reader='las')
+    _, arrays = pdal_load(incld, reader=reader)
     
     # not pretty but one line  
     # issue is for rasterio it needs to be an iterable
@@ -2421,7 +2495,7 @@ def nrm_point_dtm(incld, inRas, outcld=None):
     if outcld == None:
         outcld = incld
     
-    pdal_write(arrays, outcld, writer='las')
+    pdal_write(arrays, outcld, writer=writer)
     
 #    nr = df.nrmz.to_numpy()
 #    nr[nr<0]=0
@@ -2602,6 +2676,25 @@ def zonal_points(inShp, inRas, field, band=1, nodata_value=0, write_stat=True):
     vds = None
     rds = None
 
+def image_thresh(image):
+
+#    image = rgb2gray(io.imread(im))
+    
+    if image.shape[0] > 4000:
+        image = rescale(image, 0.5, preserve_range=True, anti_aliasing=True)
+        image = np.uint8(image)
+    
+    def threshold(image, t):
+        arr = da.from_array(image, chunks=image.shape)
+        return arr > t
+    
+    all_thresholds = da.stack([threshold(image, t) for t in np.arange(255)])
+    
+    viewer = napari.view_image(image, name='input image')
+    viewer.add_image(all_thresholds,
+        name='thresholded', colormap='magenta', blending='additive'
+    )
+
 def apply_lut(src, lut):
     # dst(I) <-- lut(src)
     # https://stackoverflow.com/questions/14448763/
@@ -2623,7 +2716,7 @@ def colorscale(seg, prop='Area', custom=None):
     prop: string
         sklearn region prop
     
-    custom: list
+    custom: lhedgeras)ist
             a custom list of values to apply to array
     
     Returns
@@ -2650,6 +2743,87 @@ def colorscale(seg, prop='Area', custom=None):
     
     return oot
 
+def raster_skel(inras, outras, nodata=0, prune_len=70, blur=False, plot=None):
+    
+    """
+    
+    
+    Parameters
+    ----------
+    
+    inras: string
+        input raster
+    
+    outras: string
+        output raster
+    
+    nodata: int
+            nodata value
+    
+    prune_len: int
+              length of line to be pruned from initial skeleton
+    
+    plot: string
+          either 'plot' for debug/results or None
+    
+    Returns
+    -------
+    
+    binary image of skeleton
+    """
+    
+    img = raster2array(inras)
+    
+    img[img==nodata]=0
+    
+    # this step may not help actually
+    if blur != False:
+        img = cv2.GaussianBlur(img, (0,0), sigmaX=3, sigmaY=3, 
+                               borderType=cv2.BORDER_DEFAULT)
+
+    pcv.params.debug = plot
+    
+    skel = pcv.morphology.skeletonize(img)
+    
+    # input skel must be uint8!!! - slow but effective
+    #pruned_skeleton, segmented_img, segment_objects
+    
+    #pcv.params.line_thickness = 3 
+    pruned_skeleton, _, _ = pcv.morphology.prune(skel_img=skel, size=prune_len)
+    
+    # get the total length
+    #np.count_nonzero(pruned_skeleton)*0.5/1000
+    
+    pruned_skeleton[pruned_skeleton>0]=1
+    
+    array2raster(pruned_skeleton, 1, inras, outras, 1)
+    
+    return pruned_skeleton
+    
+
+def las2ply_cc(incld):
+    
+    """
+    Translate to ply 
+    
+    Parameters
+    ----------
+    
+    incld: string
+            input cloud
+    
+    
+    outcld: string
+            output cloud
+    """
+
+    
+    cmd = ["cloudcompare.CloudCompare", "-SILENT", "-NO_TIMESTAMP", "-C_EXPORT_FMT",
+           "PLY", "-O", "-GLOBAL_SHIFT", "AUTO", incld, "-SAVE_CLOUDS"]
+
+    call(cmd)
+    
+    
 
 #def cldcompare_merge(folder):
 #    

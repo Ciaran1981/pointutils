@@ -37,6 +37,7 @@ import sys
 from skimage.exposure import rescale_intensity
 from skimage.measure import regionprops
 from skimage.transform import rescale
+import skimage.morphology as skm
 import dask.array as da
 import rasterio
 from plantcv import plantcv as pcv
@@ -1314,8 +1315,9 @@ def split_into_classes(incld, field='label', classes=None, folder=None):
     
     if folder == None:
         folder = os.path.join(os.path.dirname(incld), 'sepCls')
-        if not os.path.exists(folder):
-            os.mkdir(folder)
+    
+    if not os.path.exists(folder):
+        os.mkdir(folder)
     
     if classes == None:
         classes = pcd.points[field].unique().tolist()
@@ -2743,7 +2745,7 @@ def colorscale(seg, prop='Area', custom=None):
     
     return oot
 
-def raster_skel(inras, outras, nodata=0, prune_len=70, blur=False, plot=None):
+def raster_skel(inras, outras, nodata=0, prune_len=70, blur=True, plot=None):
     
     """
     
@@ -2759,6 +2761,9 @@ def raster_skel(inras, outras, nodata=0, prune_len=70, blur=False, plot=None):
     
     nodata: int
             nodata value
+    
+    blur: bool
+            use a blur to smooth binary
     
     prune_len: int
               length of line to be pruned from initial skeleton
@@ -2822,6 +2827,39 @@ def las2ply_cc(incld):
            "PLY", "-O", "-GLOBAL_SHIFT", "AUTO", incld, "-SAVE_CLOUDS"]
 
     call(cmd)
+
+def _lc_posproc(incld, outras, outshp, attribute='label', outtype='max', 
+                  spref="EPSG:27700", resolution=0.3, dtype='uint8',
+                  maxSearchDist=1, area_close=None, nodatadrop=255):
+    """
+    Convenience for recent work
+    """
+    
+    grid_cloud(incld, outras, attribute=attribute, outtype=outtype, 
+                  spref=spref, resolution=resolution, dtype=dtype)
+
+    fill_nodata(outras, maxSearchDist=maxSearchDist)
+    
+    if area_close != None:
+        img = raster2array(outras)
+        img[img==255]=0
+        img = skm.area_closing(img, area_threshold=area_close)
+        array2raster(img, 1, outras, outras, 3)
+
+    polygonize(outras, outshp)
+
+    gdf = gpd.read_file(outshp)
+    
+    if nodatadrop != None:
+        gdf.drop(gdf[gdf.DN == nodatadrop].index, inplace=True)
+
+    gdf["Area"] = gdf['geometry'].area
+
+    totalarea = gdf.Area.sum()/10000
+
+    gdf.to_file(outshp)
+    
+    return gdf, totalarea
     
     
 

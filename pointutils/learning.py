@@ -1593,9 +1593,8 @@ def classify_cgal(incld, inModel, classes, k=5, rgb=False, method=None,
     incld: string
               the input point cloud
     
-    outModel: string
-          the input point cloud
-          
+    inModel: string
+          the input model
     classes: list of strings
             the class labels in order
           

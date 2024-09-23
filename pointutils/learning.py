@@ -26,7 +26,7 @@ from sklearn import svm
 from osgeo import gdal, ogr#,osr
 import numpy as np
 from sklearn.model_selection import StratifiedKFold, train_test_split
-from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, GradientBoostingClassifier,RandomForestRegressor, GradientBoostingRegressor
+from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, GradientBoostingClassifier, ExtraTreesRegressor, RandomForestRegressor, GradientBoostingRegressor
 from sklearn.linear_model import LogisticRegression, SGDClassifier
 import joblib
 from sklearn import metrics
@@ -417,8 +417,7 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
         
     Notes:
     ------      
-        Scoring types - there are a lot - some of which won't work for 
-        multi-class, regression etc - see the sklearn docs!
+        Scoring types - there are a lot which are task dependent see the sklearn docs!
         
         'accuracy', 'adjusted_rand_score', 'average_precision', 'f1',
         'f1_macro', 'f1_micro', 'f1_samples', 'f1_weighted', 'neg_log_loss',
@@ -564,7 +563,20 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
                                     cv=cv, n_jobs=cores,
                                     scoring=scoring, verbose=2)
                 
-
+    if clf == 'erf' and regress is True:
+        RF_clf = ExtraTreesRegressor(n_jobs = cores, random_state = 123)
+        if params is None:
+            param_grid ={"n_estimators": [500],
+                             "max_features": ['sqrt', 'log2'],                                                
+                             "max_depth": [10, None],
+                             "min_samples_split": [2,3,5],
+                             "min_samples_leaf": [5,10,20,50,100,200,500],
+                             "bootstrap": [True, False]}
+        else:
+            param_grid = params
+        grid = GridSearchCV(RF_clf, param_grid=param_grid, 
+                            cv=cv, n_jobs=cores,
+                            scoring=scoring, verbose=2)
          
     if clf == 'xgb' and regress is False:
         xgb_clf = XGBClassifier(use_label_encoder=False)
@@ -820,7 +832,7 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
                            'multi_class':['ovr', 'multinomial']}]
         else:
             param_grid = params
-        grid = GridSearchCV(logit_clf, param_grid=param_grid, 
+        grid = GridSearchCV(logit_clf, param_grid=param_grid, ExtraTreesRegressor
                             cv=cv, n_jobs=cores,
                             scoring=scoring, verbose=2)
         
@@ -833,18 +845,23 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
     
         joblib.dump(grid.best_estimator_, outModel) 
     
-    testresult = grid.best_estimator_.predict(X_test)
+    if regress == True:
+        
+        regrslt = regression_results(y_test, testresult)
+        return [grid.best_estimator_, grid.cv_results_, grid.best_score_, 
+            grid.best_params_, regrslt]
+        
+    else:
+        crDf = hp.plot_classif_report(y_test, testresult, target_names=class_names,
+                                      save=outModel[:-3]+'._classif_report.png')
     
-    crDf = hp.plot_classif_report(y_test, testresult, target_names=class_names,
-                                  save=outModel[:-3]+'._classif_report.png')
-    
-    confmat = hp.plt_confmat(X_test, y_test, grid.best_estimator_, 
-                             class_names=class_names, 
-                   cmap=plt.cm.Blues, 
-                fmt="%d", save=outModel[:-3]+'_confmat.png')
-    
-    return [grid.best_estimator_, grid.cv_results_, grid.best_score_, 
+        confmat = hp.plt_confmat(X_test, y_test, grid.best_estimator_, 
+                                 class_names=class_names, 
+                       cmap=plt.cm.Blues, 
+                    fmt="%d", save=outModel[:-3]+'_confmat.png')
+        return [grid.best_estimator_, grid.cv_results_, grid.best_score_, 
             grid.best_params_, crDf, confmat]
+
 #    print(grid.best_params_)
 #    print(grid.best_estimator_)
 #    print(grid.oob_score_)
@@ -949,7 +966,7 @@ def RF_oob_opt(model, X_train, min_est, max_est, step, regress=False):
             oob_error = 1 - clf.oob_score_
             error_rate[label].append((i, oob_error))
     # Generate the "OOB error rate" vs. "n_estimators" plot.
-    for label, clf_err in error_rate.items():
+   ExtraTreesRegressor for label, clf_err in error_rate.items():
         xs, ys = zip(*clf_err)
         plt.plot(xs, ys, label=label)
     

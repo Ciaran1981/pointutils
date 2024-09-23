@@ -31,6 +31,8 @@ dependencies:
   - tqdm
   - dask-ml
   - auto-sklearn
+  - ipywidgets
+  - nb_conda
 
   - pip:
     - git+https://github.com/Ciaran1981/pointutils

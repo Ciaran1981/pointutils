@@ -26,13 +26,10 @@ dependencies:
   - tensorflow-gpu 
   - keras-gpu
   - pytorch-gpu
-  - tpot
   - glob2
   - tqdm
   - dask-ml
-  - auto-sklearn
   - ipywidgets
-  - nb_conda
 
   - pip:
     - git+https://github.com/Ciaran1981/pointutils

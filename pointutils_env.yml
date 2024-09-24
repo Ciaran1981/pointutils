@@ -3,8 +3,8 @@ name: pointutils
 
 channels: 
   - conda-forge
-  - anaconda
-
+  - pytorch
+  
 dependencies:
   - python=3
   - pip
@@ -23,14 +23,15 @@ dependencies:
   - python-pdal
   - gdal
   - pyntcloud
-  - tensorflow-gpu 
-  - keras-gpu
   - pytorch-gpu
-  - glob2
+  - torchvision
+  - segmentation-models-pytorch
+  - lightgbm
   - tqdm
   - dask-ml
-  - ipywidgets
-
+  - napari
+  - skorch
+ 
   - pip:
     - git+https://github.com/Ciaran1981/pointutils
 

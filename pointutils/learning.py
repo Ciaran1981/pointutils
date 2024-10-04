@@ -10,44 +10,48 @@ machine learning applied to point clouds
 
 # This must go first or it causes the error:
 #ImportError: dlopen: cannot load any more object with static TLS
-try:
-    #import xgboost as xgb
-    from xgboost.sklearn import XGBClassifier
-    import xgboost as xgb
-except ImportError:
-    pass
-    print('xgb not available')
+from xgboost.sklearn import XGBClassifier, XGBRegressor
+import xgboost as xgb
+
 
 from tqdm import tqdm
-from collections import OrderedDict
+
 import matplotlib.pyplot as plt
-from sklearn import preprocessing
+from collections import OrderedDict
+import glob
 from sklearn import svm
 from osgeo import gdal, ogr#,osr
 import numpy as np
-from sklearn.model_selection import StratifiedKFold, train_test_split
-from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, GradientBoostingClassifier, ExtraTreesRegressor, RandomForestRegressor, GradientBoostingRegressor
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import (StratifiedKFold, GroupKFold, KFold, 
+                                     train_test_split,GroupShuffleSplit,
+                                     StratifiedGroupKFold, 
+                                     PredefinedSplit)
+from sklearn.ensemble import (RandomForestClassifier, ExtraTreesClassifier,
+                              GradientBoostingClassifier,RandomForestRegressor,
+                              GradientBoostingRegressor, ExtraTreesRegressor,
+                              VotingRegressor, VotingClassifier, StackingRegressor,
+                              StackingClassifier,
+                              HistGradientBoostingRegressor,
+                              HistGradientBoostingClassifier)
 from sklearn.linear_model import LogisticRegression, SGDClassifier
-import joblib
+from sklearn.preprocessing import (LabelEncoder, MaxAbsScaler, MinMaxScaler,
+                                   Normalizer, PowerTransformer,StandardScaler,
+                                   QuantileTransformer)
+from sklearn.svm import SVC, SVR, NuSVC, NuSVR, LinearSVC, LinearSVR
+from sklearn.feature_selection import VarianceThreshold, RFECV
+from sklearn.inspection import permutation_importance
 from sklearn import metrics
-import sklearn.gaussian_process as gp
-import joblib as jb
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
-from scipy.stats import randint as sp_randint
-from scipy.stats import expon
-from pyntcloud import PyntCloud
-import pandas as pd
-from joblib import Parallel, delayed
-from keras.models import Sequential
-# if still not working try:
-from keras.layers.core import Dense#, Dropout, Flatten, Activation
-
-from keras.wrappers.scikit_learn import KerasClassifier
-from keras.models import load_model, save_model
-#import tensorflow as tf
-#from keras.utils import multi_gpu_model
-import os
-from glob2 import glob
+#from catboost import (CatBoostClassifier, CatBoostRegressor,Pool )
+import lightgbm as lgb
+# from autosklearn.classification import AutoSklearnClassifier
+# from autosklearn.regression import AutoSklearnRegressor
+from skorch import NeuralNetClassifier
+from optuna.integration import LightGBMPruningCallback
+from optuna import create_study
+import torch.nn as nn
+import joblib
 
 from pointutils.props import cgal_features_mem, std_features
 gdal.UseExceptions()
@@ -66,33 +70,250 @@ gdal.UseExceptions()
 ogr.UseExceptions()
 
 
-def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
-                 strat=True, test_size=0.3, regress=False, params = None,
-                 scoring=None, class_names=None,
-                 ply=False, save=True):
+def _group_cv(X_train, y_train, group, test_size=0.2, cv=10, strat=False):
     
     """
-    Brute force or random model creating using scikit learn. Either use the
-    default params in this function or enter your own (recommended - see sklearn)
+    Return the splits and and vars for a group grid search
+    """
+        
+    # maintain group based splitting from initial train/test split
+    # to main train set
+    # TODO - sep func?
+    splitter = GroupShuffleSplit(test_size=test_size, n_splits=1, random_state=0)
+    split = splitter.split(X_train, y_train, group)
+    train_inds, test_inds = next(split)
+
+    X_test = X_train[test_inds]
+    y_test = y_train[test_inds]
+    X_train = X_train[train_inds]
+    y_train = y_train[train_inds]
+    group_trn = group[train_inds]
+    
+    if strat == True:
+        group_kfold = StratifiedGroupKFold(n_splits=cv).split(X_train,
+                                                              y_train,
+                                                              group_trn)
+    else:
+        group_kfold = GroupKFold(n_splits=cv).split(X_train,
+                                                    y_train,
+                                                    group_trn) 
+    
+    # all this not required produces same as above - keep for ref though
+    # # Create a nested list of train and test indices for each fold
+    # k_kfold = group_kfold.split(X_train, y_train, groups=group_trn)  
+
+    # train_ind2, test_ind2 = [list(traintest) for traintest in zip(*k_kfold)]
+
+    # cv = [*zip(train_ind2, test_ind2)]
+    
+    return X_train, y_train, X_test, y_test, group_kfold
+
+def rec_feat_sel(X_train, featnames, preproc=('scaler', None),  clf='erf',  
+                 group=None, 
+                 cv=5, params=None, cores=-1, strat=True, 
+                 test_size=0.3, regress=False, return_test=True,
+                 scoring=None, class_names=None, save=True, cat_feat=None):
+    
+    """
+    Recursive feature selection
     
     Parameters
     ---------------   
     
     X_train: np array
-              numpy array of training data where the 1st column is labels
+              numpy array of training data where the 1st column is labels.
+              If the groupkfold is used, the last column will be the group labels
     
-    outModel: string
-               the output model path which is a gz file, if using keras it is 
-               h5 
     
+    params: dict
+            a dict of model params (see scikit learn). If using a pipe(line)
+            remember to prefix each param as follows with parent object 
+            and two underscores.
+            param_grid ={"selector__threshold": [0, 0.001, 0.01],
+             "classifier__n_estimators": [1075]}
+             
     clf: string
           an sklearn or xgb classifier/regressor 
           logit, sgd, linsvc, svc, svm, nusvm, erf, rf, gb, xgb,
-          
-          keras nnt also available as a very limited option - the nnt is 
-          currently a dense sequential of 32, 16, 8, 32 - please inspect the
-          source. If using GPU, you will likely be limited to a sequential 
-          grid search as multi-core overloads the GPUs quick!
+    
+    group: np.array
+            array of group labels for train/test split and grid search
+            useful to avoid autocorrelation          
+    
+    cv: int
+         no of folds
+    
+    cores: int or -1 (default)
+            the no of parallel jobs
+    
+    strat: bool
+            a stratified grid search
+    
+    test_size: float
+            percentage to hold out to test
+    
+    regress: bool
+              a regression model if True, a classifier if False
+    
+    scoring: string
+              a suitable sklearn scoring type (see notes)
+    
+    class_names: list of strings
+                class names in order of their numercial equivalents
+    
+    Returns
+    -------
+    
+    bool index of features, list of chosen feature names
+    """
+    #TODO need to make all this a func
+    # Not woring with hgb....
+    clfdict = {'rf': RandomForestClassifier(random_state=0),
+               'erf': ExtraTreesClassifier(random_state=0),
+               'gb': GradientBoostingClassifier(random_state=0),
+               'xgb': XGBClassifier(random_state=0),
+               'logit': LogisticRegression(),
+               # 'catb': CatBoostClassifier(logging_level='Silent', # supress trees in terminal
+               #                            random_seed=42),
+               # 'catbgpu': CatBoostClassifier(logging_level='Silent', # supress trees in terminal
+               #                            random_seed=42,
+                                          # task_type="GPU",
+                                          # devices='0:1'),
+               'lgbm': lgb.LGBMClassifier(random_state=0),
+ #use_best_model=True-needs non empty eval set
+                'hgb': HistGradientBoostingClassifier(early_stopping=True,
+                                                      random_state=0)}
+    
+    regdict = {'rf': RandomForestRegressor(random_state=0),
+               'erf': ExtraTreesRegressor(random_state=0),
+               'gb': GradientBoostingRegressor(early_stopping=True,
+                                               random_state=0),
+               'xgb': XGBRegressor(random_state=0),
+               # 'catb': CatBoostRegressor(logging_level='Silent', 
+               #                           random_seed=42),
+               # 'catbgpu': CatBoostClassifier(logging_level='Silent', # supress trees in terminal
+               #                            random_seed=42,
+               #                            task_type="GPU",
+                                          # devices='0:1'),
+               'lgbm': lgb.LGBMRegressor(random_state=0),
+
+               'hgb': HistGradientBoostingRegressor(early_stopping=True,
+                                                    random_state=0)}
+    
+    if regress is True:
+        model = regdict[clf]
+        if clf == 'hgb':
+            # until this is fixed - enabling above does nothing
+            model.do_early_stopping = True
+        if scoring is None:
+            scoring = 'r2'
+    else:
+        model = clfdict[clf]
+        cv = StratifiedKFold(cv)
+        if scoring is None:
+            scoring = 'accuracy'
+    bands = X_train.shape[1]-1
+    
+    #X_train = X_train.transpose()
+    X_train = X_train[X_train[:,0] != 0]
+    
+     
+    # Remove non-finite values
+    if group is not None: #replace this later not good
+        inds = np.where(np.isfinite(X_train).all(axis=1))
+        group = group[inds]
+    
+    X_train = X_train[np.isfinite(X_train).all(axis=1)]
+    # y labels
+    y_train = X_train[:,0]
+
+    # remove labels from X_train
+    X_train = X_train[:,1:bands+1]
+    
+    #no_classes = len(np.unique(y_train))
+    
+
+    # this is not a good way to do this
+    # Does this matter for feature selection??
+    if group is not None:
+        
+        X_train, y_train, X_test, y_test, cv = _group_cv(X_train, y_train,
+                                                         group, test_size,
+                                                         cv)
+        
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_train, y_train, test_size=test_size, random_state=0)
+    
+
+        
+    rfecv = RFECV(estimator=model, 
+                  step=1, 
+                  cv=cv, 
+                  scoring=scoring,
+                  n_jobs=cores) # suspect this is no of folds
+    
+    pipeline  = Pipeline([preproc,
+                          ('selector', rfecv)])
+
+
+    # VERY slow - but I guess it is grid searching feats first
+    #rfecv
+    pipeline.fit(X_train, y_train)
+
+    # First experiment is to add this as a fixed part of the process at the start
+    # as it will slow it down otherwise
+
+    # featind = pipeline[1].support_ # gains the feat indices(bool)
+    # featnmarr = np.array(featnames)
+    # featnames_sel = featnmarr[featind==True].tolist()
+
+    # as X_train has changed we cant select from it within here
+    
+    return pipeline
+    
+    
+def create_model(X_train, outModel, clf='erf', group=None, random=False,
+                 cv=5, params=None, pipe='default', cores=-1, strat=True, 
+                 test_size=0.3, regress=False, return_test=True,
+                 scoring=None, class_names=None, save=True, cat_feat=None):
+    
+    """
+    Brute force or random model creating using scikit learn.
+    
+    Parameters
+    ---------------   
+    
+    X_train: np array
+              numpy array of training data where the 1st column is labels.
+              If the groupkfold is used, the last column will be the group labels
+    
+    outModel: string
+               the output model path which is a gz file, if using keras it is 
+               h5
+    
+    params: dict
+            a dict of model params (see scikit learn). If using a pipe(line)
+            remember to prefix each param as follows with parent object 
+            and two underscores.
+            param_grid ={"selector__threshold": [0, 0.001, 0.01],
+             "classifier__n_estimators": [1075]}
+            
+    pipe: str,dict,None
+            if 'default' will include a preprocessing pipeline consisting of
+            StandardScaler(), MinMaxScaler(), Normalizer(), MaxAbsScaler(),
+            otherwise specify in this form 
+            pipe = {'scaler': [StandardScaler(), MinMaxScaler(),
+                  Normalizer()]}
+            or None will not preprocess the data
+             
+    clf: string
+          an sklearn or xgb classifier/regressor 
+          logit, sgd, linsvc, svc, svm, nusvm, erf, rf, gb, xgb,
+    
+    group: np.array
+            array of group labels for train/test split and grid search
+            useful to avoid autocorrelation          
           
     random: bool
              if True, a random param search
@@ -112,8 +333,9 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
     regress: bool
               a regression model if True, a classifier if False
     
-    params: a dict of model params (see scikit learn)
-             enter your own params dict rather than the range provided
+    return_test: bool
+              return X_test and y_test along with results (last two entries
+              in list)
     
     scoring: string
               a suitable sklearn scoring type (see notes)
@@ -126,12 +348,13 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
     A list of:
         
     [grid.best_estimator_, grid.cv_results_, grid.best_score_, 
-            grid.best_params_, classification_report)]
+            grid.best_params_, classification_report, X_test, y_test]
     
         
     Notes:
     ------      
-        Scoring types - there are a lot which are task dependent see the sklearn docs!
+        Scoring types - there are a lot - some of which won't work for 
+        multi-class, regression etc - see the sklearn docs!
         
         'accuracy', 'adjusted_rand_score', 'average_precision', 'f1',
         'f1_macro', 'f1_micro', 'f1_samples', 'f1_weighted', 'neg_log_loss',
@@ -142,443 +365,340 @@ def create_model(X_train, outModel, clf='svc', random=False, cv=5, cores=-1,
         'recall_weighted', 'roc_auc'
                     
     """
-    #t0 = time()
     
-    min_max_scaler = preprocessing.MinMaxScaler()
-    print('Preparing data')   
-    # TODO IMPORTANT add xgb boost functionality
-    #inputImage = gdal.Open(inputIm)    
+
+    clfdict = {'rf': RandomForestClassifier(random_state=0),
+               'erf': ExtraTreesClassifier(random_state=0),
+               'gb': GradientBoostingClassifier(random_state=0),
+               'xgb': XGBClassifier(random_state=0),
+               'logit': LogisticRegression(),
+               # 'catb': CatBoostClassifier(logging_level='Silent', # supress trees in terminal
+               #                            random_seed=42),
+               # 'catbgpu': CatBoostClassifier(logging_level='Silent', # supress trees in terminal
+               #                            random_seed=42,
+               #                            task_type="GPU",
+               #                            devices='0:1'),
+               'lgbm': lgb.LGBMClassifier(random_state=0),
+
+                'hgb': HistGradientBoostingClassifier(random_state=0),
+                'svm': SVC(),
+                'nusvc': NuSVC(),
+                'linsvc': LinearSVC()}
     
-    """
-    Prep of data for model fitting 
-    """
+    regdict = {'rf': RandomForestRegressor(random_state=0),
+               'erf': ExtraTreesRegressor(random_state=0),
+               'gb': GradientBoostingRegressor(random_state=0),
+               'xgb': XGBRegressor(random_state=0),
+               # 'catb': CatBoostRegressor(logging_level='Silent', 
+               #                           random_seed=42),
+               # 'catbgpu': CatBoostRegressor(logging_level='Silent', # supress trees in terminal
+               #                            random_seed=42,
+               #                            task_type="GPU",
+               #                            devices='0:1'),
+               'lgbm': lgb.LGBMRegressor(random_state=0),
+               'hgb': HistGradientBoostingRegressor(random_state=0),
+                'svm': SVR(),
+                'nusvc': NuSVR(),
+                'linsvc': LinearSVR()}
+    
+    if regress is True:
+        model = regdict[clf]
+        if scoring is None:
+            scoring = 'r2'
+    else:
+        model = clfdict[clf]
+        if group is None:
+            cv = StratifiedKFold(cv)
+        if scoring is None:
+            scoring = 'accuracy'
+    
+    if cat_feat:
+        model.categorical_features = cat_feat
+    
     
     bands = X_train.shape[1]-1
     
     #X_train = X_train.transpose()
-    if ply == False:
-        
-        X_train = X_train[X_train[:,0] != 0]
+    X_train = X_train[X_train[:,0] != 0]
     
      
     # Remove non-finite values
+    if group is not None: #replace this later not good
+        inds = np.where(np.isfinite(X_train).all(axis=1))
+        group = group[inds]
+    
     X_train = X_train[np.isfinite(X_train).all(axis=1)]
     # y labels
     y_train = X_train[:,0]
 
     # remove labels from X_train
     X_train = X_train[:,1:bands+1]
-    if scoring is None and regress is False:
-        scoring = 'accuracy'
-    elif scoring is None and regress is True:    
-        scoring = 'r2'
-    # then introduce the test at the end 
-    X_train, X_test, y_train, y_test = train_test_split(
+    
+    #no_classes = len(np.unique(y_train))
+    
+
+    # this is not a good way to do this
+    if regress == True:
+        strat = False # failsafe
+        
+    if group is not None: # becoming a mess
+
+        X_train, y_train, X_test, y_test, cv = _group_cv(X_train, y_train,
+                                                             group, test_size,
+                                                             cv, strat=strat)        
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(
             X_train, y_train, test_size=test_size, random_state=0)
+        #cv = StratifiedKFold(cv)
+        
     
-    # Choose the classifier type
-    # TODO this has become rather messy (understatement)
-    # and inefficient - need to make it more 
-    # elegant
-    no_classes = len(np.unique(y_train))
-    if clf == 'keras':
+    if pipe == 'default':
+        # the dict must be in order of proc to work hence this
+        # none is included to ensure
+        # non prep data is considered
+        #  should add selector?? seems to produce a load of nan errors (or warnings)
+        sclr = {'scaler': [StandardScaler(), MinMaxScaler(),
+                           Normalizer(), MaxAbsScaler(), 
+                           QuantileTransformer(output_distribution='uniform'),
+                           #PowerTransformer(),
+                           None]} 
+        sclr.update(params)
         
+    else:
+        sclr = pipe.copy() # to stop the var getting altered in script
+        sclr.update(params)
+    
+    sk_pipe = Pipeline([("scaler", StandardScaler()),
+                        #("selector", None), lord knows why this fails on var thresh
+                        ("classifier", model)])
         
-        kf = StratifiedKFold(cv, shuffle=True)
-        #Not currently workable
-#        if gpu > 1:
-#            
-#
-#
-#            def _create_nnt(no_classes=no_classes):
-#            	# create model - fixed at present
-#                tf.compat.v1.disable_eager_execution()
-#                with tf.device("/cpu:0"):
-#                    model = Sequential()
-#                    model.add(Dense(32, activation='relu', input_dim=bands))
-#                    model.add(Dense(16, activation='relu'))
-#                    model.add(Dense(8,  activation='relu'))
-#                    model.add(Dense(32, activation='relu'))
-#                    model.add(Dense(no_classes, activation='softmax'))
-#                    model.compile(optimizer='rmsprop', loss='categorical_crossentropy', 
-#                                metrics=['accuracy'])
-#                    model = multi_gpu_model(model, gpus=2)
-#                    model.compile(optimizer='rmsprop', loss='categorical_crossentropy', 
-#                                metrics=['accuracy'])
-#                    return model
-       # else:
-        def _create_nnt(no_classes=no_classes):
-    	# create model - fixed at present 
-        
-            model = Sequential()
-            model.add(Dense(32, activation='relu', input_dim=bands))
-            model.add(Dense(16, activation='relu'))
-            model.add(Dense(8,  activation='relu'))
-            model.add(Dense(32, activation='relu'))
-            model.add(Dense(no_classes, activation='softmax'))
-            model.compile(optimizer='rmsprop', loss='categorical_crossentropy', 
-                        metrics=['accuracy'])
-            return model
-        
-        # the model
-        model = KerasClassifier(build_fn=_create_nnt, verbose=1)
-        # may require this to get both GPUs working
-        
-		# initialize the model
-
-        # define the grid search parameters
-        if params is None:
-            batch_size = [10, 20, 40]#, 60, 80, 100]
-            epochs = [10]#, 30]
-            param_grid = dict(batch_size=batch_size, epochs=epochs)
-        else:
-            param_grid = params
-        
-        # It is of vital importance here that the estimator model is passed
-        # like this otherwiae you get loky serialisation error
-        # Also, at present it has to work sequentially, otherwise it overloads
-        # the gpu
-        grid = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=1, 
-                            cv=kf, verbose=1)
-                              
-        
-        
-    if clf == 'erf':
-         RF_clf = ExtraTreesClassifier(n_jobs=cores)
-         if random==True:
-            param_grid = {"max_depth": [10, None],
-                          "n_estimators": [500],
-                          "min_samples_split": sp_randint(1, 20),
-                          "min_samples_leaf": sp_randint(1, 20),
-                          "bootstrap": [True, False],
-                          "criterion": ["gini", "entropy"]}
-                      
-        # run randomized search
-            grid = RandomizedSearchCV(RF_clf, param_distributions=param_grid,
-                                       n_jobs=cores, n_iter=20,  verbose=2)
-            #print("done in %0.3fs" % (time() - t0))
-         else:
-            if params is None: 
-            #currently simplified for processing speed 
-                param_grid ={"n_estimators": [500],
-                             "max_features": ['sqrt', 'log2'],                                                
-                             "max_depth": [10, None],
-                             "min_samples_split": [2,3,5],
-                             "min_samples_leaf": [5,10,20,50,100],
-                             "bootstrap": [True, False]}
-            else:
-                param_grid = params
-            if strat is True and regress is False:               
-                grid = GridSearchCV(RF_clf, param_grid=param_grid, 
-                                    cv=StratifiedKFold(cv), n_jobs=cores,
-                                    scoring=scoring, verbose=2)
-            elif strat is False and regress is False:  
-                grid = GridSearchCV(RF_clf, param_grid=param_grid, 
+    
+    if random is True:
+        # recall the model is in the pipeline
+        grid = RandomizedSearchCV(sk_pipe, param_distributions=sclr, 
+                                  n_jobs=cores, n_iter=20,  verbose=2)
+    else:
+        grid = GridSearchCV(sk_pipe,  param_grid=sclr, 
                                     cv=cv, n_jobs=cores,
-                                    scoring=scoring, verbose=2)
-                
-    if clf == 'erf' and regress is True:
-        RF_clf = ExtraTreesRegressor(n_jobs = cores, random_state = 123)
-        if params is None:
-            param_grid ={"n_estimators": [500],
-                             "max_features": ['sqrt', 'log2'],                                                
-                             "max_depth": [10, None],
-                             "min_samples_split": [2,3,5],
-                             "min_samples_leaf": [5,10,20,50,100,200,500],
-                             "bootstrap": [True, False]}
-        else:
-            param_grid = params
-        grid = GridSearchCV(RF_clf, param_grid=param_grid, 
-                            cv=cv, n_jobs=cores,
-                            scoring=scoring, verbose=2)
-         
-    if clf == 'xgb' and regress is False:
-        xgb_clf = XGBClassifier(use_label_encoder=False)
-        if params is None:
-                # This is based on the Tianqi Chen author of xgb
-                # tips for data science as a starter
-                # he recommends fixing trees - they are 200 by default here
-                # crunch this first then fine tune rest
-                # 
-                ntrees = 200
-                param_grid={'n_estimators': [ntrees],
-                            'learning_rate': [0.1], # fine tune last
-                            'max_depth': [4, 6, 8, 10],
-                            'colsample_bytree': [0.4,0.6,0.8,1.0]}
-            #total available...
-#            param_grid={['reg_lambda',
-#                         'max_delta_step',
-#                         'missing',
-#                         'objective',
-#                         'base_score',
-#                         'max_depth':[6, 8, 10],
-#                         'seed',
-#                         'subsample',
-#                         'gamma',
-#                         'scale_pos_weight',
-#                         'reg_alpha', 'learning_rate',
-#                         'colsample_bylevel', 'silent',
-#                         'colsample_bytree', 'nthread', 
-#                         'n_estimators', 'min_child_weight']}
-        else:
-            param_grid = params
-        grid = GridSearchCV(xgb_clf, param_grid=param_grid, 
-                                cv=StratifiedKFold(cv), n_jobs=cores,
-                                scoring=scoring, verbose=2)
+                                    scoring=scoring, verbose=1)
 
-        
-    if clf == 'gb' and regress is False:
-        # Key parameter here is max depth
-        gb_clf = GradientBoostingClassifier()
-        if params is None:
-            param_grid ={"n_estimators": [100], 
-                         "learning_rate": [0.1, 0.75, 0.05, 0.025, 0.01],
-                         "max_features": ['sqrt', 'log2'],                                                
-                         "max_depth": [3,5],                    
-                         "min_samples_leaf": [5,10,20,30]}
-        else:
-            param_grid = params
-#                       cut due to time
-        if strat is True and regress is False:               
-            grid = GridSearchCV(gb_clf, param_grid=param_grid, 
-                                cv=StratifiedKFold(cv), n_jobs=cores,
-                                scoring=scoring, verbose=2)
-        elif strat is False and regress is False:
-            grid = GridSearchCV(gb_clf, param_grid=param_grid, 
-                                cv=cv, n_jobs=cores,
-                                scoring=scoring, verbose=2)
-        
-    if clf == 'gb'  and regress is True:
-        gb_clf = GradientBoostingRegressor(n_jobs=cores)
-        if params is None:
-            param_grid = {"n_estimators": [500],
-                          "loss": ['ls', 'lad', 'huber', 'quantile'],                      
-                          "learning_rate": [0.1, 0.75, 0.05, 0.025, 0.01],
-                          "max_features": ['sqrt', 'log2'],                                                
-                          "max_depth": [3,5],                    
-                          "min_samples_leaf": [5,10,20,30]}
-        else:
-            param_grid = params
-        
-        grid = GridSearchCV(gb_clf, param_grid=param_grid, 
-                            cv=cv, n_jobs=cores,
-                            scoring=scoring, verbose=2)
-        
-    #Find best params----------------------------------------------------------
-    if clf == 'rf' and regress is False:
-         RF_clf = RandomForestClassifier(n_jobs=cores, random_state = 123)
-         if random==True:
-             if params is None:
-                 param_grid = {"max_depth": [10, None],
-                          "n_estimators": [500],
-                          "min_samples_split": sp_randint(1, 20),
-                          "min_samples_leaf": sp_randint(1, 20),
-                          "bootstrap": [True, False],
-                          "criterion": ["gini", "entropy"]}
-             else:
-                  param_grid = params
-                      
-        # run randomized search
-             grid = RandomizedSearchCV(RF_clf, param_distributions=param_grid,
-                                       n_jobs=cores, n_iter=20,  verbose=2)
-            #print("done in %0.3fs" % (time() - t0))
-         else:
-            if params is None: 
-            #currently simplified for processing speed 
-                param_grid ={"n_estimators": [500],
-                             "max_features": ['sqrt', 'log2'],                                                
-                             "max_depth": [10, None],
-                             "min_samples_split": [2,3,5],
-                             "min_samples_leaf": [5,10,20,50,100,200,500],
-                             "bootstrap": [True, False]}
-            else:
-                param_grid = params
-            if strat is True and regress is False:               
-                grid = GridSearchCV(RF_clf, param_grid=param_grid, 
-                                    cv=StratifiedKFold(cv), n_jobs=cores,
-                                    scoring=scoring, verbose=2)
-            elif strat is False and regress is False:  
-                grid = GridSearchCV(RF_clf, param_grid=param_grid, 
-                                    cv=cv, n_jobs=cores,
-                                    scoring=scoring, verbose=2)
-         
-    if clf == 'rf' and regress is True:
-        RF_clf = RandomForestRegressor(n_jobs = cores, random_state = 123)
-        if params is None:
-            param_grid ={"n_estimators": [500],
-                             "max_features": ['sqrt', 'log2'],                                                
-                             "max_depth": [10, None],
-                             "min_samples_split": [2,3,5],
-                             "min_samples_leaf": [5,10,20,50,100,200,500],
-                             "bootstrap": [True, False]}
-        else:
-            param_grid = params
-        grid = GridSearchCV(RF_clf, param_grid=param_grid, 
-                            cv=cv, n_jobs=cores,
-                            scoring=scoring, verbose=2)
-                
-            #print("done in %0.3fs" % (time() - t0))
-    
-    # Random can be quicker and more often than not produces close to
-    # exaustive results
-    if clf == 'linsvc' and regress is False:
-        X_train = min_max_scaler.fit_transform(X_train)
-        svm_clf = svm.LinearSVC()
-        if random == True:
-            param_grid = [{'C': [expon(scale=100)], 'class_weight':['auto', None]}]
-            #param_grid = [{'kernel':['rbf', 'linear']}]
-            grid = GridSearchCV(svm_clf, param_grid=param_grid, cv=cv,
-                                scoring=scoring, verbose=1, n_jobs=cores)
-            grid.fit(X_train, y_train)
-            joblib.dump(grid.best_estimator_, outModel) 
-            #print("done in %0.3fs" % (time() - t0))
-        else:
-             param_grid = [{'C': [1, 10, 100, 1000], 'class_weight':['auto', None]}]
-            #param_grid = [{'kernel':['rbf', 'linear']}]
-             if strat is True:               
-                grid = GridSearchCV(svm_clf, param_grid=param_grid, 
-                                    cv=StratifiedKFold(cv), n_jobs=cores,
-                                    scoring=scoring, verbose=2)
-             elif strat is False and regress is False:  
-                 grid = GridSearchCV(svm_clf, param_grid=param_grid, 
-                                    cv=cv, n_jobs=cores,
-                                    scoring=scoring, verbose=2)
-        
-    if clf == 'linsvc' and regress is True:
-        svm_clf = svm.LinearSVR()
-        if params is None:
-            param_grid = [{'C': [1, 10, 100, 1000]},
-                           {'loss':['epsilon_insensitive',
-                        'squared_epsilon_insensitive']}]
-        else:
-            param_grid = params
-        grid = GridSearchCV(svm_clf, param_grid=param_grid, 
-                            cv=cv, n_jobs=cores,
-                            scoring=scoring, verbose=2)
-             #print("done in %0.3fs" % (time() - t0))
-    if clf == 'svc': # Far too bloody slow
-        X_train = min_max_scaler.fit_transform(X_train)
-        svm_clf = svm.SVC(probability=False)
-        if random == True:
-            if params is None:
-        
-                param_grid = [{'C': [expon(scale=100)], 'gamma': [expon(scale=.1).astype(float)],
-                  'kernel': ['rbf'], 'class_weight':['auto', None]}]
-            else:
-                param_grid = params
-            #param_grid = [{'kernel':['rbf', 'linear']}]
-            grid = GridSearchCV(svm_clf, param_grid=param_grid, cv=cv,
-                                scoring=scoring, verbose=1, n_jobs=cores)
-            #print("done in %0.3fs" % (time() - t0))
 
-        if params is None:
-    
-             param_grid = [{'C': [1, 10, 100, 1000], 'gamma': [1e-3, 1e-4],
-             'kernel': ['rbf'], 'class_weight':['auto', None]}]
-        else:
-            param_grid = params
-            #param_grid = [{'kernel':['rbf', 'linear']}]
-        if strat is True and regress is False:               
-            grid = GridSearchCV(svm_clf, param_grid=param_grid, 
-                                cv=StratifiedKFold(cv), n_jobs=cores,
-                                scoring=scoring, verbose=2)
-        elif strat is False and regress is False: 
-            grid = GridSearchCV(svm_clf, param_grid=param_grid, 
-                                cv=cv, n_jobs=cores,
-                                scoring=scoring, verbose=2)
-             #print("done in %0.3fs" % (time() - t0))
-    
-    if clf == 'nusvc' and regress is False:
-        X_train = min_max_scaler.fit_transform(X_train)
-        svm_clf = svm.NuSVC(probability=False)
-        if random == True:
-            if params is None:
-                param_grid = [{'nu':[0.25, 0.5, 0.75, 1], 'gamma': [expon(scale=.1).astype(float)],
-                                          'class_weight':['auto']}]
-            else:
-                param_grid = params
-            #param_grid = [{'kernel':['rbf', 'linear']}]
-            grid = GridSearchCV(svm_clf, param_grid=param_grid, cv=cv,
-                                scoring=scoring, verbose=1, n_jobs=cores)
-            #print("done in %0.3fs" % (time() - t0))
-        else:
-            if params is None:
-                 param_grid = [{'nu':[0.25, 0.5, 0.75, 1],'gamma': [1e-3, 1e-4],
-                                'class_weight':['balanced']}]
-            else:
-                param_grid = params
-            #param_grid = [{'kernel':['rbf', 'linear']}]
-        if strat is True and regress is False:               
-                grid = GridSearchCV(svm_clf, param_grid=param_grid, 
-                                    cv=StratifiedKFold(cv), n_jobs=cores,
-                                    scoring=scoring, verbose=2)
-        elif strat is True and regress is False: 
-             grid = GridSearchCV(svm_clf, param_grid=param_grid, 
-                                cv=cv, n_jobs=cores,
-                                scoring=scoring, verbose=2)
-        
-    if clf == 'nusvc' and regress is True:
-         svm_clf = svm.NuSVR()
-         param_grid = [{'nu':[0.25, 0.5, 0.75, 1],'gamma': [1e-3, 1e-4]}]
-         grid = GridSearchCV(svm_clf, param_grid=param_grid, 
-                            cv=cv, n_jobs=cores,
-                            scoring=scoring, verbose=2)
-             #print("done in %0.3fs" % (time() - t0))
-    if clf == 'logit':
-        logit_clf = LogisticRegression()
-        if params is None:
-            param_grid = [{'C': [1, 10, 100, 1000], 'penalty': ['l1', 'l2', ],
-                           'solver': ['newton-cg', 'lbfgs', 'liblinear', 'sag'],
-                           'multi_class':['ovr', 'multinomial']}]
-        else:
-            param_grid = params
-        grid = GridSearchCV(logit_clf, param_grid=param_grid, 
-                            cv=cv, n_jobs=cores,
-                            scoring=scoring, verbose=2)
-        
-    if clf == 'sgd':
-        logit_clf = SGDClassifier()
-        if params is None:
-            param_grid = [{'loss' : ['hinge, log', 'modified_huber',
-                                     'squared_hinge', 'perceptron'], 
-                           'penalty': ['l1', 'l2', 'elasticnet'],
-                           'learning_rate':['constant', 'optimal', 'invscaling'],
-                           'multi_class':['ovr', 'multinomial']}]
-        else:
-            param_grid = params
-        grid = GridSearchCV(logit_clf, param_grid=param_grid, ExtraTreesRegressor
-                            cv=cv, n_jobs=cores,
-                            scoring=scoring, verbose=2)
-        
     grid.fit(X_train, y_train)
     
-    if clf == 'keras':
-        
-        grid.best_estimator_.model.save(outModel)
-    else:
+    joblib.dump(grid.best_estimator_, outModel) 
     
-        joblib.dump(grid.best_estimator_, outModel) 
+    testresult = grid.best_estimator_.predict(X_test)
     
     if regress == True:
-        
         regrslt = regression_results(y_test, testresult)
-        return [grid.best_estimator_, grid.cv_results_, grid.best_score_, 
-            grid.best_params_, regrslt]
+        results = [grid]
         
     else:
         crDf = hp.plot_classif_report(y_test, testresult, target_names=class_names,
                                       save=outModel[:-3]+'._classif_report.png')
+        
+        confmat = metrics.confusion_matrix(testresult, y_test, labels=class_names)
+        disp = metrics.ConfusionMatrixDisplay(confusion_matrix=confmat,
+                                      display_labels=class_names)
+        disp.plot()
     
-        confmat = hp.plt_confmat(X_test, y_test, grid.best_estimator_, 
-                                 class_names=class_names, 
-                       cmap=plt.cm.Blues, 
-                    fmt="%d", save=outModel[:-3]+'_confmat.png')
-        return [grid.best_estimator_, grid.cv_results_, grid.best_score_, 
-            grid.best_params_, crDf, confmat]
+        # confmat = hp.plt_confmat(X_test, y_test, grid.best_estimator_, 
+        #                          class_names=class_names, 
+        #                          cmap=plt.cm.Blues, 
+        #                          fmt="%d", 
+        #                          save=outModel[:-3]+'_confmat.png')
+        
+        results = [grid, crDf, confmat]
+        
+    if return_test == True:
+        results.extend([X_test, y_test])
+    return results
 
-#    print(grid.best_params_)
-#    print(grid.best_estimator_)
-#    print(grid.oob_score_)
+def combine_models(X_train, modelist, mtype='regress', method='voting', group=None, 
+                   test_size=0.3, outmodel=None, class_names=None, params=None,
+                   final_est='xgb', cv=5):#, cores=1):
+    
+    """
+    Combine models using either the voting or stacking methods in scikit-learn
+    
+    Parameters
+    ----------
+    
+    X_train: np array
+              numpy array of training data where the 1st column is labels.
+    
+    outmodel: string
+               the output model path which is a gz file, if using keras it is 
+               h5
+    
+    modelist: dict
+            a list of tuples of model type (str) and model (class) e.g.
+            [('gb', gmdl), ('rf', rfmdl), ('lr', reg3)]
+    
+    mtype: string
+            either clf or regress
+    
+    method: string
+            either voting or k = clusterer.labels_stacking
+
+    test_size: float
+            percentage to hold out to test  
+                
+    group: np.array
+            array of group labels for train/test split and grid search
+            useful to avoid autocorrelation
+              
+    class_names: list of strings
+                class names in order of their numercial equivalents
+    
+    params: dict
+            a dict of model params (If using stacking method for final estimator)
+    
+    final_est: string
+             the final estimator one of (rf, gb, erf, xgb, logit)
+
+    """
+    bands = X_train.shape[1]-1
+    
+    X_train = X_train[X_train[:,0] != 0]
+    
+    if group is not None: #replace this later not good
+        inds = np.where(np.isfinite(X_train).all(axis=1))
+        group = group[inds]
+    
+    X_train = X_train[np.isfinite(X_train).all(axis=1)]
+    # y labels
+    y_train = X_train[:,0]
+
+    # remove labels from X_train
+    X_train = X_train[:,1:bands+1]
+    
+        # Remove non-finite values
+ 
+    
+    # this is not a good way to do this
+    if group is not None:
+        # this in theory should not make any difference at this stage...
+        # ...included for now
+        # maintain group based splitting from initial train/test split
+        # to main train set
+        # TODO - sep func?
+        splitter = GroupShuffleSplit(test_size=test_size, n_splits=1, random_state=0)
+        split = splitter.split(X_train, y_train, group)
+        train_inds, test_inds = next(split)
+    
+        X_test = X_train[test_inds]
+        y_test = y_train[test_inds]
+        X_train = X_train[train_inds]
+        y_train = y_train[train_inds]
+        group_trn = group[train_inds]
+        
+        group_kfold = GroupKFold(n_splits=cv) 
+        # Create a nested list of train and test indices for each fold
+        k_kfold = group_kfold.split(X_train, y_train, group_trn)  
+
+        train_ind2, test_ind2 = [list(traintest) for traintest in zip(*k_kfold)]
+
+        cv = [*zip(train_ind2, test_ind2)]
+        
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_train, y_train, test_size=test_size, random_state=0)
+    
+    if method == 'voting':
+        comb = VotingRegressor(estimators=modelist)#, n_jobs=cores)
+        # we only wish to predict really - but  necessary 
+        # for sklearn model construct
+    else:
+        clfdict = {'rf': RandomForestClassifier(random_state=0),
+                   'erf': ExtraTreesClassifier(random_state=0),
+                   'gb': GradientBoostingClassifier(random_state=0),
+                   'xgb': XGBClassifier(random_state=0),
+                   'logit': LogisticRegression(),
+                   'lgbm': lgb.LGBMClassifier(random_state=0),
+                    'hgb': HistGradientBoostingClassifier(random_state=0),
+                    'svm': SVC(),
+                    'nusvc': NuSVC(),
+                    'linsvc': LinearSVC()}
+        
+        regdict = {'rf': RandomForestRegressor(random_state=0),
+                   'erf': ExtraTreesRegressor(random_state=0),
+                   'gb': GradientBoostingRegressor(random_state=0),
+                   'xgb': XGBRegressor(random_state=0),
+                   'lgbm': lgb.LGBMRegressor(random_state=0),
+                   'hgb': HistGradientBoostingRegressor(random_state=0),
+                    'svm': SVR(),
+                    'nusvc': NuSVR(),
+                    'linsvc': LinearSVR()}
+        
+        if mtype == 'regress':
+            # won't accept the dict even with the ** to unpack it
+            fe = regdict[final_est]()
+            fe.set_params(**params)
+            
+            comb = StackingRegressor(estimators=modelist,
+                                final_estimator=fe)
+        else:
+            fe = clfdict[final_est]()
+            fe.set_params(**params)
+            cv = StratifiedKFold(cv)            
+            comb = StackingClassifier(estimators=modelist,
+                                final_estimator=fe)
+            
+    comb.fit(X_train, y_train)
+    
+    # Since there is no train/test this is misleading...
+    train_pred = comb.predict(X_train)
+    test_pred = comb.predict(X_test)  
+    if mtype == 'regress':
+        print('On the train split (not actually trained on this)')
+        regression_results(y_train, train_pred)
+        
+        print('On the test split')
+        regression_results(y_test, test_pred)
+        
+    else:
+        crDf = hp.plot_classif_report(y_test, test_pred, target_names=class_names,
+                              save=outmodel[:-3]+'._classif_report.png')
+    
+        confmat = hp.plt_confmat(X_test, y_test, comb, 
+                                 class_names=class_names, 
+                                 cmap=plt.cm.Blues, 
+                                 fmt="%d", 
+                                 save=outmodel[:-3]+'_confmat.png')
+    
+    if outmodel is not None:
+        joblib.dump(comb, outmodel)
+    return comb, X_test, y_test 
+
+
+def regression_results(y_true, y_pred):
+
+    # Regression metrics
+    explained_variance = metrics.explained_variance_score(y_true, y_pred)
+    mean_absolute_error = metrics.mean_absolute_error(y_true, y_pred) 
+    mse=metrics.mean_squared_error(y_true, y_pred) 
+    #mean_squared_log_error = metrics.mean_squared_log_error(y_true, y_pred)
+    median_absolute_error = metrics.median_absolute_error(y_true, y_pred)
+    r2 = metrics.r2_score(y_true, y_pred)
+
+    print('explained_variance: ', round(explained_variance,4))    
+    #print('mean_squared_log_error: ', round(mean_squared_log_error,4))
+    print('r2: ', round(r2,4))
+    print('MAE: ', round(mean_absolute_error,4))
+    print('MSE: ', round(mse,4))
+    print('MedianAE', round(median_absolute_error, 4))
+    print('RMSE: ', round(np.sqrt(mse),4))   
+    #TODO add when sklearn updated    
+    display = metrics.PredictionErrorDisplay.from_predictions(
+        y_true=y_true,
+        y_pred=y_pred,
+        kind="actual_vs_predicted",
+        #ax=ax,
+        scatter_kwargs={"alpha": 0.2, "color": "tab:blue"},
+        line_kwargs={"color": "tab:red"},
+    )
+
  
 
 def RF_oob_opt(model, X_train, min_est, max_est, step, regress=False):

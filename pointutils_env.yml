@@ -7,6 +7,7 @@ channels:
   
 dependencies:
   - python=3
+  # - spyder=5.5.6
   - pip
   - numpy
   - git
@@ -15,6 +16,7 @@ dependencies:
   - jupyter
   - matplotlib
   - gdal
+  - rasterio
   - geopandas
   - scikit-image
   - scikit-learn
@@ -31,6 +33,8 @@ dependencies:
   - dask-ml
   - napari
   - skorch
+  - glob2
+  - plantcv
  
   - pip:
     - git+https://github.com/Ciaran1981/pointutils

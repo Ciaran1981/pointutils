@@ -100,8 +100,50 @@ def split_cloud(incld, capacity=2000000, writer='ply'):
         js[2]["precision"] = "6f"
     
     pipeline = pdal.Pipeline(json.dumps(js))
-    pipeline.execute()    
+    pipeline.execute()
+
+
+def filter_cld(incld, outcld, exp="Classification == 1", writer="las"):
     
+    """
+    Extract a class from a cloud eg ground or non ground class
+    
+    
+    Parameters
+    ----------
+    
+    incld: string
+             input cloud
+             
+    outcld: string
+             output cloud
+    
+    exp: string
+            the filter expression eg "Classification == 1"
+
+    writer: string
+            writer type (las, laz, ply, ept)    
+    
+    """
+    js = [
+    incld,
+    { "type":"filters.expression",
+     "expression":exp
+
+    },
+    {
+        "type":"writers."+writer,
+        "filename": outcld
+    }
+    ]
+    
+    if writer == 'ply':
+        js[2]["precision"] = "6"
+    
+    pipeline = pdal.Pipeline(json.dumps(js))
+    pipeline.execute()
+
+
 def las2ply(incld, outcld):
     
     """
@@ -244,9 +286,11 @@ def reproject_cloud(incld, outcld, inproj="ESPG:4326", outproj="ESPG:32630",
     
     inproj: string
             e.g. in form ESPG:4326 or proj4 if that doesn't work
+            PROJ 4 RECOMMENDED
     
     outproj: string
             e.g. in form ESPG:4326 or proj4 if that doesn't work
+            PROJ 4 RECOMMENDED
             
     reader: string
             reader type (las, laz, ply, ept)
@@ -260,7 +304,7 @@ def reproject_cloud(incld, outcld, inproj="ESPG:4326", outproj="ESPG:32630",
         {
             "filename": incld,
             "type":"readers."+reader,
- #           "spatialreference": inproj,
+            "spatialreference": inproj,
         },
         {
             "type":"filters.reprojection",
@@ -870,7 +914,10 @@ def grid_cloud_batch(folder, attribute="label", reader="readers.ply",
              reader, writer, spref, dtype,
              outtype, resolution, rng_limit) for ply, out in zip(plylist, outlist))
 
-def pdal_denoise(incld, outcld, method="statistical", multi=3, k=8):
+
+
+def pdal_denoise(incld, outcld, method="statistical", multi=3, k=8,
+                 remove_outliers=True):
     
     """
     Denoise a pointcloud attribute using pdals outlier filters
@@ -883,12 +930,18 @@ def pdal_denoise(incld, outcld, method="statistical", multi=3, k=8):
     
     outcld: string
             output cloud
+            
+    method: string
+            either statistical or
     
     multi: int
             multiplier
     
     k: int
             k neighbours
+    
+    remove_outliers: bool
+            Whether to remove the outlying points- they are classified as 7
             
     """
     
@@ -900,14 +953,21 @@ def pdal_denoise(incld, outcld, method="statistical", multi=3, k=8):
                 "method": method,
                 "multiplier": multi,
                 "mean_k": k
-            },
-            {
-                "type": "writers.las",
-                "filename": outcld
-            }
-        ]
+            } ]
         }
     
+    if remove_outliers == True:
+        pip = {"type": "filters.expression",
+               "expression": "Classification == 1"}
+        js['pipeline'].append(pip)
+    
+    # done here as it is erased but rm_out option insertion
+    js['pipeline'].append({
+            "type": "writers.las",
+            "filename": outcld
+        })
+    
+
     pipeline = pdal.Pipeline(json.dumps(js))
     count = pipeline.execute()
     
@@ -1567,7 +1627,7 @@ def resize(inRas, outRas, templateRas):
 #              "6": np.float32,"7": np.float64,"10": np.complex64,
 #              "11": np.complex128}
 
-def chm(dtm, dsm, chm, blocksize = 256, FMT = None, dtype=None):
+def chm(dtm, dsm, chm, blocksize=256, thresh=None):
     
     """ 
     Create a CHM by dsm - dtm, done in blocks for efficiency
@@ -1584,48 +1644,44 @@ def chm(dtm, dsm, chm, blocksize = 256, FMT = None, dtype=None):
     chm: string
             the dsm path
         
-    FMT: string
-          the output gdal format eg 'Gtiff', 'KEA', 'HFA'
-        
     blocksize: int
                 the chunk of raster read in & write out
+    
+    thresh: float
+                set a minimum threshold (metres) at which canopy will be masked out
+                e.g. 0.1
 
     """
     
-    if FMT == None:
-        FMT = 'Gtiff'
-        fmt = '.tif'
-    if FMT == 'HFA':
-        fmt = '.img'
-    if FMT == 'KEA':
-        fmt = '.kea'
-    if FMT == 'Gtiff':
-        fmt = '.tif'
+    # Formerly - but not good if rasters dims don't match
+    # #dtm
+    # inDataset = gdal.Open(dtm)
+    # dtmRas = inDataset.GetRasterBand(1)
+    # #get no data as they may be different between rasters
+    # dtmnd = dtmRas.GetNoDataValue()
     
+    # #dsm
+    # dsmin = gdal.Open(dsm)
+    # dsmRas = dsmin.GetRasterBand(1)
+    # dsmnd = dsmRas.GetNoDataValue()
     
-    #dtm
-    inDataset = gdal.Open(dtm, gdal.GA_Update)
-    dtmRas = inDataset.GetRasterBand(1)
-    #get no data as they may be different between rasters
-    dtmnd = dtmRas.GetNoDataValue()
-    
-    #dsm
-    dsmin = gdal.Open(dsm)
-    dsmRas = dsmin.GetRasterBand(1)
-    dsmnd = dsmRas.GetNoDataValue()
+    # quick and dirty way of ensuring alignment (not usually guaranteed)
+    tmpstk = os.path.join(os.path.split(dsm)[0],'tmpstk.tif')
+    _merge(names=[dsm, dtm], out_file=tmpstk)
     
     # ootdtype
-    rdsDtype = dsmRas.DataType
+    rds = gdal.Open(tmpstk)
+    rdsDtype = rds.GetRasterBand(1).DataType
     
     # chm - must be from the dsm otherwise we get an offset
-    outDataset = _copy_dataset_config(dsmin,  outMap=chm,
+    outDataset = _copy_dataset_config(rds,  outMap=chm,
                          dtype=rdsDtype, bands=1)
     
     chmRas = outDataset.GetRasterBand(1)
     
-    bnnd = inDataset.GetRasterBand(1)
-    cols = inDataset.RasterXSize
-    rows = inDataset.RasterYSize
+    bnnd = rds.GetRasterBand(1)
+    cols = rds.RasterXSize
+    rows = rds.RasterYSize
 
     # So with most datasets blocksize is a row scanline
     if blocksize == None:
@@ -1648,20 +1704,61 @@ def chm(dtm, dsm, chm, blocksize = 256, FMT = None, dtype=None):
                 numCols = blocksizeX
             else:
                 numCols = cols - j
-            dsarr = dsmRas.ReadAsArray(j, i, numCols, numRows)
-            # nodata
-            dsarr[dsarr==dsmnd]=0
-            dtmarray = dtmRas.ReadAsArray(j, i, numCols, numRows)
-            # nodata
-            dtmarray[dtmarray==dtmnd]=0
-            #chm
-            chm = dsarr - dtmarray
-            chm[chm < 0] = 0 # in case of minus vals
-            chmRas.WriteArray(chm, j, i)
             
+            img = rds.ReadAsArray(j, i, numCols, numRows)
+            
+            # former code now redundant
+            # dsarr = dsmRas.ReadAsArray(j, i, numCols, numRows)
+            # nodata
+            #dsarr[dsarr==dsmnd]=0
+            #dtmarray = dtmRas.ReadAsArray(j, i, numCols, numRows)
+            # nodata
+            #dtmarray[dtmarray==dtmnd]=0
+            
+            #chm
+            chm = img[0, :, :] - img[1, :, :]
+            # in case of minus vals / silly no data
+            chm[chm < 0] = 0 
+            # to ensure there is no leak of dsm vals where underlying dtm is 0
+            chm[img[1, :, :]==0]=0
+            if thresh is not None:
+                chm[chm<=thresh]=0
+            chmRas.WriteArray(chm, j, i)
+    
+    os.remove(tmpstk)
     outDataset.FlushCache()
     outDataset = None
+
+def _quickwarp(inRas, outRas, proj='EPSG:27700', **kwargs):
     
+    """
+    gdalwarp a dataset
+    
+    Parameters
+    ----------
+    
+    inRas: string
+            input raster
+    
+    outRas: string
+            output raster
+            
+    proj: string
+            an espg code e.g. 'EPSG:27700'
+    
+    Notes
+    -----
+    
+    kwargs could include
+    
+    resampleAlg='bilinear' if interp or 'average' if aggregating
+    
+    xRes=10, yRes=10, multithread=True
+    """
+    ootRas = gdal.Warp(outRas, inRas, dstSRS=proj, format='Gtiff', 
+                       callback=gdal.TermProgress, **kwargs)
+    ootRas.FlushCache()
+    ootRas=None
 
 def mask_raster_multi(inputIm,  mval=1, rule='==', outval=None, mask=None,
                     blocksize = 256, FMT = None, dtype=None):
@@ -1794,6 +1891,268 @@ def mask_raster_multi(inputIm,  mval=1, rule='==', outval=None, mask=None,
         inDataset.FlushCache()
         inDataset = None
 
+def mask_with_poly(inshp, inras, layer=True, value=0, mtype='inside'):
+    
+    """ 
+    Change raster values inside a polygon and update the raster
+    
+    Geometries must intersect!!!
+    
+    If done with layer=True entire raster will be read in at once and
+    masked with layer, otherwise (False), each geometry will be read seperately
+    and only that area read in. 
+    
+    Parameters
+    ----------
+    
+    vector_path: string
+                  input shapefile
+        
+    raster_path: string
+                  input raster
+    
+    layer: bool
+           whether to use the entire vector file as a mask (True) or loop through
+           geometries seperately (False)
+    
+    value: int
+            the value to alter
+    
+    mtype: str
+            either area 'inside' or 'outside' of polygon is masked
+    """    
+    
+    rds = gdal.Open(inras, gdal.GA_Update)
+    rgt = rds.GetGeoTransform()
+    bands = rds.RasterCount
+    
+    vds = ogr.Open(inshp, 1)  
+    vlyr = vds.GetLayer(0)
+
+    mem_drv = ogr.GetDriverByName('Memory')
+    driver = gdal.GetDriverByName('MEM')
+
+    # Loop through vectors
+    features = np.arange(vlyr.GetFeatureCount())
+    
+    rds_ext, spref, ext = _raster_extent2poly(inras)
+    
+    if layer == True:
+        
+        # What a mission - but more efficient for sure
+        # TODO make clip shp with shp func from this
+        ootds, ootlyr = _extent2lyr(inras, polytype='Memory')
+        clipds, cliplyr = create_ogr_poly('out', spref.ExportToWkt(),
+                                 file_type="Memory", field="id", 
+                                 field_dtype=0)
+        #self method result
+        ogr.Layer.Clip(vlyr, ootlyr, cliplyr) # it works.....
+        
+        # debug
+        #poly1 = loads(rds_ext.ExportToWkt())
+        #feat = cliplyr.GetFeature(0)
+        # geom2 = feat.GetGeometryRef()
+        #wkt=geom2.ExportToWkt()
+        #poly2 = loads(wkt)
+        
+        # dataset to put the rasterised into
+        rvlyr = _copy_dataset_config(rds, FMT='MEM', outMap='copy',
+                                   dtype=gdal.GDT_Byte, bands=1)
+
+        gdal.RasterizeLayer(rvlyr, [1], cliplyr, burn_values=[1])
+        rv_array = rvlyr.ReadAsArray()
+        src_array = rds.ReadAsArray()
+        # broadcast to 3d - nice!
+        d_mask = np.broadcast_to(rv_array==1, src_array.shape)
+        if mtype == 'inside':
+            src_array[d_mask==1]=value
+        elif mtype == 'outside':
+            src_array[d_mask!=1]=value       
+        rds.WriteArray(src_array)
+    
+    else:
+        # TODO perhaps get rid or adapt to where a select poly is wanted
+    
+        for label in tqdm(features):
+            feat = vlyr.GetNextFeature()
+    
+            if feat is None:
+                continue
+            geom = feat.geometry()
+            
+            # the poly may be partially outside the raster
+            if rds_ext.Intersects(geom) == False:
+                continue
+            interpoly = rds_ext.Intersection(geom)
+    
+            src_offset = _bbox_to_pixel_offsets(rgt, interpoly)
+            
+            # calculate new geotransform of the feature subset
+            new_gt = (
+            (rgt[0] + (src_offset[0] * rgt[1])),
+            rgt[1],
+            0.0,
+            (rgt[3] + (src_offset[1] * rgt[5])),
+            0.0,
+            rgt[5])
+    
+                
+            # Create a temporary vector layer in memory
+            mem_ds = mem_drv.CreateDataSource('out')
+            mem_layer = mem_ds.CreateLayer('poly', None, ogr.wkbPolygon)
+            featureDefn = mem_layer.GetLayerDefn()
+            feature = ogr.Feature(featureDefn)
+            feature.SetGeometry(interpoly)
+            mem_layer.CreateFeature(feature)
+            #mem_layer.CreateFeature(feat.Clone()) # if were using orig geom
+    
+            # Rasterize it
+    
+            rvds = driver.Create('', src_offset[2], src_offset[3], 1, gdal.GDT_Byte)
+         
+            rvds.SetGeoTransform(new_gt)
+            rvds.SetProjection(rds.GetProjectionRef())
+            rvds.SetGeoTransform(new_gt)
+            gdal.RasterizeLayer(rvds, [1], mem_layer, burn_values=[1])
+            rv_array = rvds.ReadAsArray()
+            
+            # This could get expensive mem wise for big images
+            for band in range(1, bands+1):
+                bnd = rds.GetRasterBand(band)
+                src_array = bnd.ReadAsArray(src_offset[0], src_offset[1], src_offset[2],
+                                   src_offset[3])
+                
+                src_array[rv_array>0]=value
+                bnd.WriteArray(src_array, src_offset[0], src_offset[1])
+            
+    rds.FlushCache()
+        
+
+    vds = None
+    rds = None
+
+def _extent2lyr(infile, filetype='raster', outfile=None, 
+                polytype="ESRI Shapefile", geecoord=False, lyrtype='ogr'):
+    
+    """
+    Get the coordinates of a files extent and return an ogr polygon ring with 
+    the option to save the  file
+    
+    
+    Parameters
+    ----------
+    
+    infile: string
+            input ogr compatible geometry file or gdal raster
+            
+    filetype: string
+            the path of the output file, if not specified, it will be input file
+            with 'extent' added on before the file type
+    
+    outfile: string
+            the path of the output file, if not specified, it will be input file
+            with 'extent' added on before the file type
+    
+    polytype: string
+            ogr comapatible file type (see gdal/ogr docs) default 'ESRI Shapefile'
+            ensure your outfile string has the equiv. e.g. '.shp' or in case of 
+            memory only 'Memory' (outfile would be None in that case)
+    
+    geecoord: bool
+           optionally convert to WGS84 lat,lon
+    
+    lyrtype: string
+            either 'gee' which means earth engine or 'ogr' which returns ds and lyr
+           
+    Returns
+    -------
+    
+    a GEE polygon geometry or ogr dataset and layer
+    
+    """
+    # gdal/ogr read in etc
+    if filetype == 'raster':
+        _, rstref, ext = _raster_extent2poly(infile)
+        # where ext is 
+        xmin, ymin, xmax, ymax = ext # readable
+        
+    else:
+        # tis a vector
+        vds = ogr.Open(infile)
+        lyr = vds.GetLayer()
+        ext = lyr.GetExtent()
+    
+    # make the linear ring -
+    ring = ogr.Geometry(ogr.wkbLinearRing)
+    ring.AddPoint(xmin, ymin)
+    ring.AddPoint(xmax, ymin)
+    ring.AddPoint(xmax, ymax)
+    ring.AddPoint(xmin, ymax)
+    ring.AddPoint(xmin, ymin) # the 5th is here as the ring must be closed
+    
+    # drop the geom into poly object
+    poly = ogr.Geometry(ogr.wkbPolygon)
+    poly.AddGeometry(ring)
+    
+    if geecoord == True:
+        # Getting spatial reference of input 
+        srs = lyr.GetSpatialRef()
+    
+        # make WGS84 projection reference3
+        wgs84 = osr.SpatialReference()
+        wgs84.ImportFromEPSG(4326)
+    
+        # OSR transform
+        transform = osr.CoordinateTransformation(srs, wgs84)
+        # apply
+        poly.Transform(transform)
+        
+        tproj = wgs84
+    if filetype == 'raster':
+        tproj = rstref
+    else:
+        tproj = lyr.GetSpatialRef()
+    
+    # in case we wish to write it for later....    
+#    if outfile != None:
+#        outfile = infile[:-4]+'extent.shp'
+    
+    out_drv = ogr.GetDriverByName(polytype)
+    
+    # remove output shapefile if it already exists
+    if outfile != None and polytype != 'Memory':
+        if os.path.exists(outfile):
+            out_drv.DeleteDataSource(outfile)
+        ootds = out_drv.CreateDataSource(outfile)
+    else:
+        ootds = out_drv.CreateDataSource('out')
+
+    ootlyr = ootds.CreateLayer("extent", tproj, geom_type=ogr.wkbPolygon)
+    
+    # add an ID field
+    idField = ogr.FieldDefn("id", ogr.OFTInteger)
+    ootlyr.CreateField(idField)
+    
+    # create the feature and set values
+    featureDefn = ootlyr.GetLayerDefn()
+    feature = ogr.Feature(featureDefn)
+    feature.SetGeometry(poly)
+    feature.SetField("id", 1)
+    ootlyr.CreateFeature(feature)
+    feature = None
+    
+    # Save and close if not a memory driver
+    
+    ootds.FlushCache()
+    
+    if outfile != None and polytype != 'Memory':
+        ootds = None
+    
+    if lyrtype == 'gee':
+        poly.FlattenTo2D()
+        return poly
+    elif lyrtype == 'ogr':
+        return ootds, ootlyr
 
 def rasterize(inShp, inRas, outRas, field=None, fmt="Gtiff"):
     
@@ -1958,7 +2317,41 @@ def normalise_raster(inras, outras, dst_min=0, dst_max=100):
 #    ds = None
 #    rds = None
 
-def clip_raster(inRas, inShp, outRas, cutline=True):
+def _raster_extent2poly(inras):
+    
+    """
+    Parameters
+    ----------
+    
+    inras: string
+        input gdal raster (already opened)
+    
+    """
+    rds = gdal.Open(inras)
+    rgt = rds.GetGeoTransform()
+    minx = rgt[0]
+    maxy = rgt[3]
+    maxx = minx + rgt[1] * rds.RasterXSize
+    miny = maxy + rgt[5] * rds.RasterYSize
+    ext = (minx, miny, maxx, maxy)
+    spref = rds.GetSpatialRef()
+    
+    # make the linear ring -
+    ring = ogr.Geometry(ogr.wkbLinearRing)
+    ring.AddPoint(minx, miny)
+    ring.AddPoint(maxx, miny)
+    ring.AddPoint(maxx, maxy)
+    ring.AddPoint(minx, maxy)
+    ring.AddPoint(minx, miny) # the 5th is here as the ring must be closed
+    
+    # drop the geom into poly object
+    poly = ogr.Geometry(ogr.wkbPolygon)
+    poly.AddGeometry(ring)
+    
+    return poly, spref, ext
+
+
+def clip_raster(inRas, inShp, outRas, cutline=False, fmt='GTiff'):
 
     """
     Clip a raster
@@ -1969,7 +2362,7 @@ def clip_raster(inRas, inShp, outRas, cutline=True):
     inRas: string
             the input image 
             
-    outPoly: string
+    inShp: string
               the input polygon file path 
         
     outRas: string (optional)
@@ -1981,48 +2374,74 @@ def clip_raster(inRas, inShp, outRas, cutline=True):
    
     """
     
-
     vds = ogr.Open(inShp)
-           
     rds = gdal.Open(inRas, gdal.GA_ReadOnly)
-    
     lyr = vds.GetLayer()
+          
+    rds_ext, spref, ext = _raster_extent2poly(inRas)
+    
+    ootds, ootlyr = _extent2lyr(inRas, polytype='Memory')
+    clipds, cliplyr = create_ogr_poly('out', spref.ExportToWkt(),
+                             file_type="Memory", field="id", 
+                             field_dtype=0)
+    
+    ogr.Layer.Clip(lyr, ootlyr, cliplyr)
+    
+    wrng = cliplyr.GetExtent()
+    extent = [wrng[0], wrng[2], wrng[1], wrng[3]]
 
+    #self method result
+     # it works.....
     
-    extent = lyr.GetExtent()
+    # debug
+    # cliplyr.GetExtent()
+    #poly1 = loads(rds_ext.ExportToWkt())
+    #feat = cliplyr.GetFeature(0)
+    #geom2 = feat.GetGeometryRef()
+    #wkt=geom2.ExportToWkt()
+    #poly2 = loads(wkt)
     
-    extent = [extent[0], extent[2], extent[1], extent[3]]
-            
+    # VERY IMPORTANT - TO AVOID COMING ACROSS THIS AGAIN
+    # The problem iootrns[0]s that the bounds are not in the 'correct' order for gdalWarp
+    # if taken from GetExtent() - they should in fact be in shapely order
+
 
     print('cropping')
-    ootds = gdal.Warp(outRas,
-              rds,
-              format = 'GTiff', outputBounds = extent)
-              
-        
-    ootds.FlushCache()
-    ootds = None
-    rds = None
+    ootds = gdal.Warp(outRas, rds, format=fmt, outputBounds=extent)
     
     if cutline == True:
+        print('masking to cutline')
+        #cutline == True:
+        # TODO - this only works with original extent of input raster,
+        # need cropped one as input
         
-        rds1 = gdal.Open(outRas, gdal.GA_Update)
-        rasterize(inShp, outRas, outRas[:-4]+'mask.tif', field=None,
-                  fmt="Gtiff")
+        # print('cropping')
+        # ootds = gdal.Warp(outRas,
+        #           rds,
+        #           format=fmt, 
+        #           outputBounds=extent)
         
-        mskds = gdal.Open(outRas[:-4]+'mask.tif')
+        # NOT finished need to read outds back in for procedure below
+        # ootds.FlushCache()
+        # ootds = None
+      
+        dtpe = rds.GetRasterBand(1).DataType
         
-        mskbnd = mskds.GetRasterBand(1)
+        rvlyr = _copy_dataset_config(ootds, FMT='MEM', outMap='copy',
+                                   dtype=gdal.GDT_Byte, bands=1)
 
-        cols = mskds.RasterXSize
-        rows = mskds.RasterYSize
+        gdal.RasterizeLayer(rvlyr, [1], cliplyr, burn_values=[1])
+        
+        mskbnd = rvlyr.GetRasterBand(1)
+
+        cols = ootds.RasterXSize
+        rows = ootds.RasterYSize
 
         blocksizeX = 256
         blocksizeY = 256
         
-        bands = rds1.RasterCount
+        bands = ootds.RasterCount
         
-        mskbnd = mskds.GetRasterBand(1)
         
         for i in tqdm(range(0, rows, blocksizeY)):
                 if i + blocksizeY < rows:
@@ -2035,17 +2454,19 @@ def clip_raster(inRas, inShp, outRas, cutline=True):
                         numCols = blocksizeX
                     else:
                         numCols = cols - j
-                    for band in range(1, bands+1):
-                        
-                        bnd = rds1.GetRasterBand(band)
-                        array = bnd.ReadAsArray(j, i, numCols, numRows)
-                        mask = mskbnd.ReadAsArray(j, i, numCols, numRows)
-                        
+
+                    array = ootds.ReadAsArray(j, i, numCols, numRows)
+                    mask = mskbnd.ReadAsArray(j, i, numCols, numRows)
+                    if len(array.shape)==2:
                         array[mask!=1]=0
-                        bnd.WriteArray(array, j, i)
+                    else:
+                        d_mask = np.broadcast_to(mask==1, array.shape)
+                        array[d_mask!=1]=0
+                    ootds.WriteArray(array, j, i)
                         
-        rds1.FlushCache()
-        rds1 = None
+    ootds.FlushCache()
+    ootds = None
+    rds = None
 
 def fill_nodata(inRas, maxSearchDist=5, smoothingIterations=1, 
                 bands=[1]):
@@ -2363,13 +2784,17 @@ def raster2array(inRas, bands=[1]):
     return inArray
 
 
-def pdal_load(incld, reader='las'):
+def pdal_load(incld, reader='las', rng_limit=None):
     
     # rather slow...
     read = "readers."+reader
     js = [{"type": read,"filename":incld}]
     
     pipeline = pdal.Pipeline(json.dumps(js))
+    
+    if rng_limit != None:
+        js.insert(1, {"type":"filters.range", 
+                   "limits":rng_limit})
     
     pipeline.execute()
     
@@ -2411,11 +2836,18 @@ def pdal_write(inarray, outcld, writer='las'):
 #    pipeline2 = pdal.Pipeline(json.dumps(js2), arrays=arrays)
 #    
 #    pipeline2.execute()
+# But far better to write a sep numpy script and call as pdal recommends
 
-def nrm_point_dtm(incld, inRas, outcld=None, reader='las', writer='las'):
+def pdal_hag_chm(incld, inRas=None, outcld=None, reader='las',
+                 hag_type="hag_dem", writer='las', thresh="40",
+                       replace_z=True):
     
     """ 
-    Normalise point heights with a DTM / height relative to ground
+    Normalise point heights with a DTM or nearest neoghbour
+    to produce height above ground (hag)
+    
+    The norm'd values are written to 'HeightAboveGround' unless you specify
+    the replace_z as True
     
     Parameters
     ----------
@@ -2428,69 +2860,172 @@ def nrm_point_dtm(incld, inRas, outcld=None, reader='las', writer='las'):
         
     outcld: string
               input pointcloud (las or ply)
+    
+    thresh: string
+            a threshold in metres at which points are removed (ie spurious heights)
+    
+    replace_z: bool
+            replace the Z values with the height above ground/chm values
+    
+    hag_type: string
+            the hag_type either had_dem (needs a dtm) or hag_nn
+            (uses nn points to acertain height)
+       
+    """    
+
+    if hag_type == "hag_dem":
+        hgdict = {"type":"filters."+hag_type, "raster": inRas }
+    elif hag_type == "hag_nn":
+        hgdict = {"type":"filters."+hag_type}
+    
+    
+    js=[incld, hgdict,]
+    
+    th = {"type": "filters.expression",
+            "expression": "HeightAboveGround < "+thresh}
+    
+    if replace_z is True:
+        
+        js.append({
+            "type":"filters.ferry",
+            "dimensions":"HeightAboveGround=>Z"
+            })
+        
+        js.append(th)
+    
+        js.append({
+            "type": "writers."+writer,
+            "filename": outcld})
+
+        
+    else:
+        js.append(th)
+        js.append({"type":"writers."+writer,
+        "filename": outcld,
+        "extra_dims":"HeightAboveGround=float32"})
+    
+    pipeline = pdal.Pipeline(json.dumps(js))
+    
+    pipeline.execute()
+    
+    # Formerly this for replace z
+    # # This seems a terrible way to do this - assume there is a direct
+    # # way of writing to Z dim as above??
+    # _, arrays = pdal_load(outcld, reader=reader)
+    # arrays[0]['Z'] = arrays[0]['HeightAboveGround']
+    # pdal_write(arrays, outcld, writer=writer)
+        
+
+
+
+def pdal_buildings(incld, outcld, inRas, knn=10, height="2", writer='las'):
+    
+    """
+    Using the coplanar filter - unlikely to be that effective - will require
+    
+    lots of further cleaning
+    
+    Parameters
+    ----------
+    
+    incld: string
+                  input pointcloud (las or ply)
+        
+    inRas: string
+                  input raster
+        
+    outcld: string
+              input pointcloud (las or ply)
+    
+    dtm: string
+            a dtm to derive height above ground from
+    
+    height: string
+            the min height of a building
+    
+    writer: string
+            the output format for pdal to write
+    
+    
+    """
+    
+    js =  [incld,
+            {
+                "type": "filters.assign",
+                "assignment": "Classification[:]=0"
+    },
+    {
+        "type":"filters.hag_dem",
+        "raster": inRas
+    },
+    {
+      "type": "filters.range",
+      "limits": "HeightAboveGround["+height+":)"
+    },
+    {
+      "type": "filters.approximatecoplanar",
+      "knn": knn
+    },
+    {
+      "type": "filters.range",
+      "limits": "Coplanar[1:1]"
+    },
+    
+    {
+        "type":"writers."+writer,
+        "filename": outcld
+    }
+    ]
+    
+    if writer == 'ply':
+        js[6]["precision"] = "6"
+    
+    pipeline = pdal.Pipeline(json.dumps(js))
+    
+    pipeline.execute()
+
+
+def nrm_point_dtm(incld, inRas, outcld=None, reader='las', writer='las'):#,
+                  #rng_limit="Classification[2:2]"):
+    
+    """ 
+    Normalise point heights with a DTM / height relative to ground
+    
+    Now redundant - use pdal_hag_chm
+    
+    Parameters
+    ----------
+    
+    incld: string
+                  input pointcloud (las or ply)
+        
+    inRas: string
+                  input raster
+        
+    outcld: string
+              input pointcloud (las or ply)
+    
+    rng_limit: string
+        only grid values in a range e.g. "Classification[1:2]" or "label[1:1]"
+        as per the pdal convention
         
     """    
     
-   
-    # 
-#    rds = gdal.Open(inRas, gdal.GA_ReadOnly)
-#    rb = rds.GetRasterBand(1)
-#    rgt = rds.GetGeoTransform()
-#
-##    if nodata_value:
-##        nodata_value = float(nodata_value)
-##        rb.SetNoDataValue(nodata_value)
     
-    # MID WAY THROUGH CHANGING THIS TO PDAL/NUMPY WAY AS PYNT CORRUPTS LARGE FILES
+    # Now redundant - use the pdal hag version - good reminder of how to access
+    # the arrays tho
     src = rasterio.open(inRas)
     
-    _, arrays = pdal_load(incld, reader=reader)
+    _, arrays = pdal_load(incld, reader=reader)#, rng_limit=rng_limit)
     
     # not pretty but one line  
     # issue is for rasterio it needs to be an iterable
     coords = list(zip(arrays[0]['X'].tolist(), arrays[0]['Y'].tolist()))
-#    
-#    pcd = PyntCloud.from_file(incld)
-#    
-#    df = pcd.points
-    
-#     This works for the above, but is VERY SLOW 2minutes for 1 ma points
-#  useful to test the numpy is correct below
-#    coords = [(x,y) for x, y in zip(df.x, df.y)]
-    
-    # debug
-    #gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.x, df.y))
-    # transform rasterio plot to real world coords
-#    fig, ax = plt.subplots()
-#    src = rasterio.open(inRas)
-#    extent=[src.bounds[0], src.bounds[2], src.bounds[1], src.bounds[3]]
-#    ax = rasterio.plot.show(src, extent=extent, ax=ax, cmap='pink')
-#
-#    gdf.plot(ax=ax)
-    
-    # a loop is not ideal with ma's of points....VERY SLOW
-    #df['grnd'] 
-    # I don't know what this was here for
-    #df['grnd'] = [x for x in src.sample(coords)]
-    
-    # how to access a field and change the value
-    #arrays[0]['Classification'][arrays[0]['Classification']==2]=0
-    # doesn't work trying to insert an array however
-    # this may help
-#    from numpy.lib.recfunctions import append_fields
-#    L = len(arrays[0]['Z'])
-#    Labels = np.ones(L)
-#    new_array = append_fields(arrays[0], 'UserData', Labels)
- # so can vals be replaced in place?
- 
-    #Should work, test on small cloud tomorrow
+
     
     res = [x for x in tqdm(src.sample(coords))]
     # make continuous array
     gvals = np.concatenate(res, axis=0)
-
-    #df['grnd'] = gvals
-    #df['nrmz'] = df.z - gvals
     
     arrays[0]['Z'] = arrays[0]['Z'] - gvals
     
@@ -2499,50 +3034,7 @@ def nrm_point_dtm(incld, inRas, outcld=None, reader='las', writer='las'):
     
     pdal_write(arrays, outcld, writer=writer)
     
-#    nr = df.nrmz.to_numpy()
-#    nr[nr<0]=0
-#    df['nrmz'] = nr
-#    
-#    if outcld == None:
-#        outcld = incld
-#    pcd.to_file(outcld)
 
-
-
-# TODO coords STILL not correct
-#    # useful to test the numpy is correct below
-##    coords = [(x,y) for x, y in zip(df.x, df.y)]
-#    
-#    # create the pixel coordinates in the table
-#    # this is faster but not sure how to combine the arrays
-#    # reshaping does not correspond to the slower method
-#    df['px'] = (df.x - rgt[0]) / rgt[1]
-#    df['py'] = (df.y - rgt[3]) / rgt[5]
-#    
-#    px = np.int32(np.round(df.px.to_numpy()))
-#    py = np.int32(np.round(df.py.to_numpy()))
-#
-#    src_array = rb.ReadAsArray()
-#    
-#    # this turns out to be relatively simple
-#    #TODO It should probably be a nearest neighbour type search 
-#    # these values are just rounded which may result in errors
-#    gvals = src_array[px, py]
-    
-    # src_array[px, py]=0 # this looks right so why are values below wrong??
-#    
-#    # finally get relative height (we hope)
-#    df['grnd'] = gvals
-#    df['nrmz'] = df.z - gvals
-#    
-#    # weirdly we have loads of negative values....
-#    # something is still wrong with this
-#    nr = df.nrmz.to_numpy()
-#    nr[nr<0]=0
-#    df['nrmz'] = nr
-#    
-#    df = df.drop(columns=['px', 'py', 'grnd'])
-#    pcd.points = df
 
 def drop_cld_value(incld, column='nrmz', rule='<', val=3, outcld=None,
                    remcld=False):
@@ -2828,84 +3320,62 @@ def las2ply_cc(incld):
 
     call(cmd)
 
-def _lc_posproc(incld, outras, outshp, attribute='label', outtype='max', 
-                  spref="EPSG:27700", resolution=0.3, dtype='uint8',
-                  maxSearchDist=1, area_close=None, nodatadrop=255):
+    
+def cldcompare_merge(folder, fmt='las'):
+    
     """
-    Convenience for recent work
+    Merge ply/las clouds using cloud compare command line via subprocess
+    
+    Paramaters
+    ----------
+    
+    folder: string
+            the input directory
+    
+    fmt: string
+        the format e.g 'las' or 'ply'
     """
     
-    grid_cloud(incld, outras, attribute=attribute, outtype=outtype, 
-                  spref=spref, resolution=resolution, dtype=dtype)
-
-    fill_nodata(outras, maxSearchDist=maxSearchDist)
+    wcard ="*." + fmt 
     
-    if area_close != None:
-        img = raster2array(outras)
-        img[img==255]=0
-        img = skm.area_closing(img, area_threshold=area_close)
-        array2raster(img, 1, outras, outras, 3)
-
-    polygonize(outras, outshp)
-
-    gdf = gpd.read_file(outshp)
+    filelist = glob(os.path.join(folder, wcard))
+    filelist.sort()
     
-    if nodatadrop != None:
-        gdf.drop(gdf[gdf.DN == nodatadrop].index, inplace=True)
-
-    gdf["Area"] = gdf['geometry'].area
-
-    totalarea = gdf.Area.sum()/10000
-
-    gdf.to_file(outshp)
+    # There should be a better way in bash, though it may be the cc cmd line 
+    # also
+    # Remember - No trailing spaces in any command as it will not work
+    inp = "-o"
+    #shft = "-GLOBAL_SHIFT AUTO" # not sure if this does anything
     
-    return gdf, totalarea
+    if fmt == 'las':
+      cf1 = "-C_EXPORT_FMT"
+      cf2 = "LAS"
+    else:
+      cf1 = "-C_EXPORT_FMT"
+      cf2 = "PLY"
     
+    cmd = []
     
+    for f in filelist:
+        cmd.append(inp)
+        cmd.append(f)
+        #cmd.append(shft)
+    # here sorting will not work - leave unordered
+    #cloudcompare.CloudCompare -SILENT -NO_TIMESTAMP -C_EXPORT_FMT PLY ${files} -MERGE_CLOUDS
+    cmd.insert(0, "cloudcompare.CloudCompare")
+    cmd.insert(1,"-SILENT")
+    cmd.insert(2,"-NO_TIMESTAMP")
+    cmd.insert(3, cf1)
+    cmd.insert(4, cf2)
+    #cmd.insert(3,"-C_EXPORT_FMT PLY")
+    cmd.append("-MERGE_CLOUDS")
+    #cmd.append("-SAVE_CLOUDS FILE")
+    #cmd.append(outcld)
+    #cmd.append("-SAVE_MESHES ALL_AT_ONCE")
+    call(cmd)
+ 
 
-#def cldcompare_merge(folder):
-#    
-#    """
-#    Merge ply clouds using cloud compare command line via subprocess
-#    
-#    Paramaters
-#    ----------
-#    
-#    folder: string
-#            the input directory
-#            
-#    """
-#    
-#    filelist = glob(os.path.join(folder, "*.ply"))
-#    filelist.sort()
-#    
-#    # There should be a better way in bash, though it may be the cc cmd line 
-#    # also
-#    inp = "-o "
-#    shft = " -GLOBAL_SHIFT AUTO"
-#    
-#    cmd = []
-#    
-#    for f in filelist:
-#        cmd.append(inp)
-#        cmd.append(f)
-#        cmd.append(shft)
-#    # here sorting will not work - leave unordered
-#    #cloudcompare.CloudCompare -SILENT -NO_TIMESTAMP -C_EXPORT_FMT PLY ${files} -MERGE_CLOUDS
-#    cmd.insert(0, "cloudcompare.CloudCompare")
-#    cmd.insert(1,"-SILENT")
-#    cmd.insert(2,"-NO_TIMESTAMP")
-#    #cmd.insert(3,"-C_EXPORT_FMT PLY")
-#    cmd.append("-MERGE_CLOUDS")
-#    #cmd.append("-SAVE_MESHES ALL_AT_ONCE")
-#    call(cmd)
-#    #log = open(os.path.join(folder, 'log.txt'), "w")
-#    #ret = call(cmd, log)
-#    
-#    if ret !=0:
-#        print('A micmac error has occured - check the log file')
-#        sys.exit()
-    
+
     
     
     

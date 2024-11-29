@@ -24,6 +24,112 @@ import pandas as pd
 import pdal
 import json
 from osgeo import gdal
+from pyforestscan.handlers import read_lidar, create_geotiff
+from pyforestscan.calculate import assign_voxels, calculate_pad, calculate_pai
+from mpl_toolkits.axes_grid1 import ImageGrid
+from matplotlib import pyplot as plt
+from matplotlib import animation
+# This is to stop the plot opening during func execution (gen_gif)
+import matplotlib
+matplotlib.use('Agg')
+
+def pai_pad(incld,  outras=None, prj="EPSG:27700", vox=(1, 1, 1)):
+    
+    """
+    Calculate PAI and produce a plant area index raster (incld needs HAG field)
+    
+    Parameters
+    ----------
+    
+    incld: string
+              the input point cloud
+        
+    outcld: string
+               the output point cloud if None then write to incld
+    
+    prj: string
+            the projection in espg style
+    
+    vox: tuple
+            the voxel dimensions (m) 
+    
+    Returns
+    -------
+    
+    PAD, PAI as np arrays
+    
+    """
+
+    arrays = read_lidar(incld, prj)
+
+    # 25m by 25m by 5m
+    voxels, extent = assign_voxels(arrays[0], vox)
+
+    pad = calculate_pad(voxels, voxel_height=vox[2])
+
+    pai = calculate_pai(pad)
+
+    outpai = ('/media/ciaran/0fcfb861-97c0-4e12-9394-9cb8f4faf8a5/'
+             'TAIM/5-CSC_Balruddery/Results/West/PAI.tif')
+    
+    if outras is not None:
+        create_geotiff(pai, outras, prj, extent)
+    
+    return pad, pai
+
+def gen_gif(array3d, ootgif, update=500):
+    
+    """
+    Produce a matplotlib-based gif of a 3d array
+    
+    Parameters
+    ----------
+    
+    array3d: np.array
+            a 3d numpy array to be animated slice by slice
+    
+    ootgit: string
+            the output gif file of the animation
+    
+    update: int
+            the update in miliseconds
+    
+    """
+    
+    fig = plt.figure()
+    im = plt.imshow(array3d[:, :, 0],   
+                    animated=True,
+                    cmap='turbo',            
+                    vmin=array3d.min(), 
+                    vmax=array3d.max()) 
+    plt.colorbar(label='PAD', shrink=0.75)
+    plt.tight_layout()
+    plt.axis('off')
+    #plt.legend("PAD 1m")
+
+    def init():
+        im.set_data(array3d[:, :, 0])
+        return im,
+
+    def animate(i):
+        im.set_array(array3d[:, :, i-1])
+        lb = "PAD "+str(i-1)+"m"
+        #im.set_label(lb)
+        return im,
+
+    anim = animation.FuncAnimation(fig,
+                                    animate,
+                                    init_func=init,
+                                    frames=array3d.shape[2], 
+                                    interval=update, 
+    
+                                    blit=True)
+    anim.save(ootgif)
+    plt.close(fig)
+    #plt.show()
+
+
+
 
 def pdal_features(incld, outcld, k=8, nt=8, writer='las', optim=True,
                   features='all'):

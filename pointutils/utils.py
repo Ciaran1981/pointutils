@@ -2655,7 +2655,8 @@ def smrf_params():
     df['window'] = df['window'].astype(float)
     return df
 
-def array2raster(array, bands, inRaster, outRas, dtype, FMT=None):
+def array2raster(array, bands, inRaster=None, outRas=None, dtype=6,
+                 FMT=None, rgt=None, espg=None):
     
     """
     Save a raster from a numpy array using the geoinfo from another.
@@ -2663,7 +2664,8 @@ def array2raster(array, bands, inRaster, outRas, dtype, FMT=None):
     Parameters
     ----------      
     array: np array
-            a numpy array.
+            a numpy array - if multiband it should be shape (bands, y, x),
+            otherwise the standard np (y,x)
     
     bands: int
             the no of bands. 
@@ -2672,7 +2674,8 @@ def array2raster(array, bands, inRaster, outRas, dtype, FMT=None):
                the path of a raster.
     
     outRas: string
-             the path of the output raster.
+             the path of the output raster, if None will be written as 
+             newraster.tif in the present directory
     
     dtype: int 
             though you need to know what the number represents!
@@ -2680,6 +2683,10 @@ def array2raster(array, bands, inRaster, outRas, dtype, FMT=None):
     
     FMT: string 
            (optional) a GDAL raster format (see the GDAL website) eg Gtiff, HFA, KEA.
+    
+    rgt: list
+        in absence of template raster a geotransform list must be supplied with
+        [x_min, PIXEL_SIZE,  0, y_max,  0, -PIXEL_SIZE]
         
     
     """
@@ -2694,20 +2701,50 @@ def array2raster(array, bands, inRaster, outRas, dtype, FMT=None):
     if FMT == 'Gtiff':
         fmt = '.tif'    
     
-    inras = gdal.Open(inRaster, gdal.GA_ReadOnly)    
     
-    x_pixels = inras.RasterXSize  # number of pixels in x
-    y_pixels = inras.RasterYSize  # number of pixels in y
-    geotransform = inras.GetGeoTransform()
-    PIXEL_SIZE = geotransform[1]  # size of the pixel...they are square so thats ok.
-    #if not would need w x h
-    x_min = geotransform[0]
-    y_max = geotransform[3]
-    # x_min & y_max are like the "top left" corner.
-    projection = inras.GetProjection()
-    geotransform = inras.GetGeoTransform()   
+    # RGT reminder
+    # rgt =  (x_min, pixx,  0, y_max,  0, -pixy)
+    # the 0s represent rotations which are not normally applied 
+    
+    #from gdalarray reminder
+    # if interleave == 'band':
+    #     interleave = True
+    #     xdim = 2
+    #     ydim = 1
+    #     banddim = 0
+    # if pixel (eg 1 band)
+    #     xdim = 1
+    #     ydim = 0
+    
+    if inRaster is not None:
+    
+        inras = gdal.Open(inRaster, gdal.GA_ReadOnly)    
+        
+        x_pixels = inras.RasterXSize  
+        y_pixels = inras.RasterYSize  
+        rgt = inras.GetGeoTransform()
+        projection = inras.GetProjection()
+    
+    
+    if inRaster is None and rgt is not None:
+        geotransform = rgt
+        
+        spref = osr.SpatialReference() 
+        spref.ImportFromEPSG(espg)
+        projection = spref.ExportToProj4()
+        
+        if len(array.shape) > 2:
+            x_pixels = int(array.shape[2])
+            y_pixels = int(array.shape[1])
+        else:
+            x_pixels = int(array.shape[1])
+            y_pixels = int(array.shape[0])
 
+          
     driver = gdal.GetDriverByName(FMT)
+    
+    if outRas is None:
+        outRas = "newraster.tif"
 
     dataset = driver.Create(
         outRas, 
@@ -2716,28 +2753,17 @@ def array2raster(array, bands, inRaster, outRas, dtype, FMT=None):
         bands,
         dtype)
 
-    dataset.SetGeoTransform((
-        x_min,    # 0
-        PIXEL_SIZE,  # 1
-        0,                      # 2
-        y_max,    # 3
-        0,                      # 4
-        -PIXEL_SIZE))    
+    dataset.SetGeoTransform(rgt)    
 
     dataset.SetProjection(projection)
     if bands == 1:
         dataset.GetRasterBand(1).WriteArray(array)
-        dataset.FlushCache()  # Write to disk.
-        dataset=None
-        #print('Raster written to disk')
     else:
-    # Here we loop through bands
-        for band in range(1,bands+1):
-            Arr = array[:,:,band-1]
-            dataset.GetRasterBand(band).WriteArray(Arr)
-        dataset.FlushCache()  # Write to disk.
-        dataset=None
-        #print('Raster written to disk')
+        dataset.WriteArray(array)
+        
+    dataset.FlushCache() 
+    dataset=None
+
         
 def raster2array(inRas, bands=[1]):
     

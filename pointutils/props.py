@@ -24,16 +24,17 @@ import pandas as pd
 import pdal
 import json
 from osgeo import gdal
-from pyforestscan.handlers import read_lidar, create_geotiff
+from pyforestscan.handlers import read_lidar
 from pyforestscan.calculate import assign_voxels, calculate_pad, calculate_pai
 from mpl_toolkits.axes_grid1 import ImageGrid
 from matplotlib import pyplot as plt
 from matplotlib import animation
+from pointutils.utils import array2raster
 # This is to stop the plot opening during func execution (gen_gif)
 import matplotlib
 matplotlib.use('Agg')
 
-def pai_pad(incld,  outras=None, prj="EPSG:27700", vox=(1, 1, 1)):
+def pai_pad(incld,  outpai=None, outpad=None, prj="EPSG:27700", vox=(1, 1, 1)):
     
     """
     Calculate PAI and produce a plant area index raster (incld needs HAG field)
@@ -44,9 +45,13 @@ def pai_pad(incld,  outras=None, prj="EPSG:27700", vox=(1, 1, 1)):
     incld: string
               the input point cloud
         
-    outcld: string
-               the output point cloud if None then write to incld
-    
+    outpai: string
+               the output plant area index raster
+               
+    outpad: string
+               the output plant area density raster (band per metre)
+               this requires outpai 
+               
     prj: string
             the projection in espg style
     
@@ -57,7 +62,7 @@ def pai_pad(incld,  outras=None, prj="EPSG:27700", vox=(1, 1, 1)):
     -------
     
     PAD, PAI as np arrays
-    
+    arrays = read_lidar(incld, prj)
     """
 
     arrays = read_lidar(incld, prj)
@@ -68,13 +73,37 @@ def pai_pad(incld,  outras=None, prj="EPSG:27700", vox=(1, 1, 1)):
     pad = calculate_pad(voxels, voxel_height=vox[2])
 
     pai = calculate_pai(pad)
+    
+    # rasterio style
+    x_min, x_max, y_min, y_max = extent
+    
+    # calc pixel size - this means of course they are not exactly square
+    # but this is what the pyforestscan version worked with
+    pixx = float((x_max-x_min) / pad.shape[0])
+    pixy = float((y_max-y_min) / pad.shape[1])
+    
+    
+    rgt =  (float(x_min), pixx,  0, float(y_max),  0, -pixy) # gdal
+    
+    #from gdalarray
+    # if interleave == 'band':
+    #     interleave = True
+    #     xdim = 2
+    #     ydim = 1
+    #     banddim = 0
+    
+    # reminder - gdal expects y, x order of np array going in whereas
+    # pyforestscan seem to have swapped them so we swap them back
+    if outpai is not None:
+        pai = pai.transpose()
+        array2raster(pai, 1, inRaster=None,
+                     outRas=outpai, dtype=6, FMT=None, rgt=rgt, espg=32630)
 
-    outpai = ('/media/ciaran/0fcfb861-97c0-4e12-9394-9cb8f4faf8a5/'
-             'TAIM/5-CSC_Balruddery/Results/West/PAI.tif')
-    
-    if outras is not None:
-        create_geotiff(pai, outras, prj, extent)
-    
+    if outpad is not None:
+        pad = pad.transpose()
+        array2raster(pad, pad.shape[0], inRaster=None,
+                     outRas=outpad, dtype=6, FMT=None, rgt=rgt, espg=32630)
+
     return pad, pai
 
 def gen_gif(array3d, ootgif, update=500):

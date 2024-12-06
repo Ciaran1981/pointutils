@@ -71,10 +71,13 @@ def pai_pad(incld,  outpai=None, outpad=None, prj="EPSG:27700", vox=(1, 1, 1)):
     voxels, extent = assign_voxels(arrays[0], vox)
 
     pad = calculate_pad(voxels, voxel_height=vox[2])
+    
+    # It often appears that there are empty layers in QGIS - but it is just
+    # mega sparse upper layers in the file - tested in np and they contain data
 
     pai = calculate_pai(pad)
     
-    # rasterio style
+    # rasterio order from pyf
     x_min, x_max, y_min, y_max = extent
     
     # calc pixel size - this means of course they are not exactly square
@@ -94,15 +97,19 @@ def pai_pad(incld,  outpai=None, outpad=None, prj="EPSG:27700", vox=(1, 1, 1)):
     
     # reminder - gdal expects y, x order of np array going in whereas
     # pyforestscan seem to have swapped them so we swap them back
+    
+    # convert for an int espg code for gdal
+    esp = int(prj.replace("EPSG:", ""))
+    
     if outpai is not None:
         pai = pai.transpose()
         array2raster(pai, 1, inRaster=None,
-                     outRas=outpai, dtype=6, FMT=None, rgt=rgt, espg=32630)
+                     outRas=outpai, dtype=6, FMT=None, rgt=rgt, espg=esp)
 
     if outpad is not None:
         pad = pad.transpose()
         array2raster(pad, pad.shape[0], inRaster=None,
-                     outRas=outpad, dtype=6, FMT=None, rgt=rgt, espg=32630)
+                     outRas=outpad, dtype=6, FMT=None, rgt=rgt, espg=esp)
 
     return pad, pai
 
@@ -116,6 +123,7 @@ def gen_gif(array3d, ootgif, update=500):
     
     array3d: np.array
             a 3d numpy array to be animated slice by slice
+            bands MUST be image dim 2/z [x,y,z]
     
     ootgit: string
             the output gif file of the animation
@@ -156,8 +164,6 @@ def gen_gif(array3d, ootgif, update=500):
     anim.save(ootgif)
     plt.close(fig)
     #plt.show()
-
-
 
 
 def pdal_features(incld, outcld, k=8, nt=8, writer='las', optim=True,

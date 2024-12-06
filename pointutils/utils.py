@@ -2751,7 +2751,8 @@ def array2raster(array, bands, inRaster=None, outRas=None, dtype=6,
         x_pixels,
         y_pixels,
         bands,
-        dtype)
+        dtype, 
+        options=['COMPRESS=LZW'])
 
     dataset.SetGeoTransform(rgt)    
 
@@ -2907,8 +2908,13 @@ def pdal_hag_chm(incld, inRas=None, outcld=None, reader='las',
     
     js=[incld, hgdict,]
     
+    # a pdal example expresssion
+    #"(Classification != 7) && (Z >= -100 && Z <= 3000)"
+    
+    expr = "(HeightAboveGround < "+thresh+") && (HeightAboveGround >= 0)" 
+    
     th = {"type": "filters.expression",
-            "expression": "HeightAboveGround < "+thresh}
+            "expression": expr}
     
     if replace_z is True:
         
@@ -3400,7 +3406,25 @@ def cldcompare_merge(folder, fmt='las'):
     #cmd.append("-SAVE_MESHES ALL_AT_ONCE")
     call(cmd)
  
+def write_vrt(infiles, outfile):
+    
+    """
+    Parameters
+    ----------
+    
+    infiles: list
+              a list of raster files
+                             
+    outfile: string
+                the output .vrt
 
+    """
+    
+    
+    virtpath = outfile
+    outvirt = gdal.BuildVRT(virtpath, infiles)
+    outvirt.FlushCache()
+    outvirt=None
 
     
     
